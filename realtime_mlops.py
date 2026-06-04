@@ -153,8 +153,8 @@ def extract_all_stations_from_grib(file_path):
     return records
 
 def run_ml_pipeline():
-    """Chạy toàn bộ pipeline ETL đa trạm -> Kết hợp bão lịch sử -> Train XGBoost."""
-    log_message("BẮT ĐẦU CHẠY PIPELINE HUẤN LUYỆN MÔ HÌNH ĐA TRẠM KẾT HỢP DỮ LIỆU LỊCH SỬ BÃO...")
+    """Chạy toàn bộ pipeline ETL đa trạm -> Kết hợp bão lịch sử cấp độ bão -> Train XGBoost."""
+    log_message("BẮT ĐẦU CHẠY PIPELINE HUẤN LUYỆN MÔ HÌNH ĐA TRẠM KẾT HỢP CẤP ĐỘ BÃO MULTI-LEVEL...")
     
     # 1. Đọc dữ liệu thực tế GFS đa trạm
     if not os.path.exists(EXTRACTED_CSV):
@@ -163,10 +163,10 @@ def run_ml_pipeline():
         
     df_real = pd.read_csv(EXTRACTED_CSV)
     df_real['timestamp'] = pd.to_datetime(df_real['timestamp'])
-    if 'is_storm' not in df_real.columns:
-        df_real['is_storm'] = 0
+    if 'storm_severity' not in df_real.columns:
+        df_real['storm_severity'] = 0
         
-    core_cols = ['timestamp', 'station_name', 'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'PRES', 'APCP', 'is_storm']
+    core_cols = ['timestamp', 'station_name', 'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'PRES', 'APCP', 'storm_severity']
     df_real = df_real[core_cols]
 
     # 2. Đọc dữ liệu lịch sử bão đa trạm
@@ -229,7 +229,7 @@ def run_ml_pipeline():
     # Xuất mô hình
     model.save_model(MODEL_JSON)
     
-    log_message(f"--- KẾT QUẢ HUẤN LUYỆN ĐA TRẠM KẾT HỢP ---")
+    log_message(f"--- KẾT QUẢ HUẤN LUYỆN ĐA TRẠM CẤP ĐỘ BÃO ---")
     log_message(f"  Số mẫu dữ liệu huấn luyện: {len(X_train)} | Tập kiểm thử: {len(X_test)}")
     log_message(f"  Sai số MAE: {mae:.4f} mm")
     log_message(f"  Sai số RMSE: {rmse:.4f} mm")
@@ -247,7 +247,7 @@ def main():
     while True:
         current_time = get_vietnam_time()
         if current_time >= target_end_time:
-            log_message(f"Thời gian hiện tại ({current_time.strftime('%Y-%m-%d %H:%M:%S')}) đã vượt quá mốc 06:00 AM. Kết thúc quá trình huấn luyện.")
+            log_message(f"Thời gian hiện tại ({current_time.strftime('%Y-%m-%d %H:%M:%S')}) đã vượt quá mốc 12:00 PM. Kết thúc quá trình huấn luyện.")
             break
             
         remaining_time = target_end_time - current_time
@@ -302,6 +302,21 @@ def main():
                                     rec['APCP'] = max(0.0, (rh_val - 80.0) * 0.3 + (cape_val / 400.0) + max(0.0, (101100.0 - pres_val) / 50.0) + np.random.normal(0, 0.5))
                                 else:
                                     rec['APCP'] = 0.0
+                            
+                            # Tính storm_severity dựa trên UGRD, VGRD và PRES (áp suất)
+                            wind_speed_ms = np.sqrt(rec['UGRD']**2 + rec['VGRD']**2)
+                            pres_pa = rec['PRES']
+                            
+                            if wind_speed_ms >= 32.7 or pres_pa < 96000.0:
+                                rec['storm_severity'] = 4  # Siêu bão
+                            elif 24.5 <= wind_speed_ms < 32.7 or 96000.0 <= pres_pa < 99000.0:
+                                rec['storm_severity'] = 3  # Bão mạnh
+                            elif 17.2 <= wind_speed_ms < 24.5 or 99000.0 <= pres_pa < 100000.0:
+                                rec['storm_severity'] = 2  # Bão nhiệt đới thường
+                            elif 10.8 <= wind_speed_ms < 17.2 or 100000.0 <= pres_pa < 100800.0:
+                                rec['storm_severity'] = 1  # Áp thấp nhiệt đới
+                            else:
+                                rec['storm_severity'] = 0
                                     
                             new_rows.append({
                                 'timestamp': rec['timestamp'],
@@ -316,6 +331,7 @@ def main():
                                 'PWAT': rec['PWAT'],
                                 'APCP': rec['APCP'],
                                 'PRES': rec['PRES'],
+                                'storm_severity': rec['storm_severity'],
                                 'file_name': file_name
                             })
                             
@@ -327,7 +343,7 @@ def main():
                         df_merged = df_merged.sort_values(by=['station_name', 'timestamp']).reset_index(drop=True)
                         
                         df_merged.to_csv(EXTRACTED_CSV, index=False)
-                        log_message(f"Đã thêm và hợp nhất thành công dữ liệu đa trạm của chu kỳ {date_str}_{cycle_str}!")
+                        log_message(f"Đã thêm và hợp nhất thành công dữ liệu đa trạm cấp độ bão của chu kỳ {date_str}_{cycle_str}!")
                         new_data_extracted = True
         
         if new_data_extracted or iteration == 1:
