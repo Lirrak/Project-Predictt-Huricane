@@ -1,10 +1,12 @@
 import os
 import sys
 import glob
+import time
 import numpy as np
 import pandas as pd
 import xarray as xr
 import cfgrib
+import requests
 
 # Đảm bảo mã hóa đầu ra là UTF-8 để hiển thị tiếng Việt trên Windows
 if sys.stdout.encoding != 'utf-8':
@@ -25,10 +27,25 @@ STATIONS = {
     "Huyen Tran": {"lat": 8.15, "lon": 110.63}
 }
 
+def fetch_multi_location_marine_for_date(date_str):
+    """
+    Tải dữ liệu sóng và hải lưu cho cả 8 trạm từ Open-Meteo Marine API tại ngày cụ thể.
+    """
+    lats = ",".join([str(STATIONS[name]["lat"]) for name in STATIONS])
+    lons = ",".join([str(STATIONS[name]["lon"]) for name in STATIONS])
+    url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lats}&longitude={lons}&start_date={date_str}&end_date={date_str}&hourly=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature"
+    try:
+        r = requests.get(url, timeout=15)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return None
+
 def extract_all_stations_from_grib(file_path):
     """
     Mở tệp GRIB2 một lần duy nhất và trích xuất dữ liệu khí quyển 
-    cho tất cả các trạm trong danh sách để tối ưu hóa hiệu năng gấp 8 lần.
+    cho tất cả các trạm trong danh sách để tối ưu hóa hiệu năng.
     """
     try:
         datasets = cfgrib.open_datasets(file_path)
@@ -64,7 +81,6 @@ def extract_all_stations_from_grib(file_path):
             except Exception:
                 continue
 
-            # Lấy valid_time làm mốc thời gian thực tế
             if 'valid_time' in ds_pixel.coords and record['timestamp'] is None:
                 val_time = ds_pixel.valid_time.values
                 if isinstance(val_time, np.ndarray):
@@ -128,7 +144,7 @@ def main():
     
     for file_path in all_grib_files:
         file_name = os.path.basename(file_path)
-        print(f"Đang xử lý trích xuất đa trạm từ tệp: {file_name}")
+        print(f"Đang xử lý trích xuất khí quyển đa trạm từ tệp: {file_name}")
         station_records = extract_all_stations_from_grib(file_path)
         for record in station_records:
             if record and record['timestamp'] is not None:
@@ -141,17 +157,13 @@ def main():
 
     # Chuyển thành DataFrame
     df_weather = pd.DataFrame(extracted_data)
+    df_weather['timestamp'] = pd.to_datetime(df_weather['timestamp'])
     
     # Sắp xếp theo trạm và thời gian tăng dần
     df_weather = df_weather.sort_values(by=['station_name', 'timestamp']).reset_index(drop=True)
     
-    print("\n--- THỐNG KÊ THIẾU DỮ LIỆU ĐA TRẠM BAN ĐẦU ---")
-    print(df_weather.isna().sum())
-
-    # ĐIỀN KHUYẾT VÀ MÔ PHỎNG KHOA HỌC CHO CÁC TRẠM
+    # ĐIỀN KHUYẾT VÀ MÔ PHỎNG KHÍ QUYỂN NẾU THIẾU
     np.random.seed(42)
-    
-    # 1. Điền khuyết các biến cơ bản cho từng trạm độc lập
     filled_dfs = []
     for station_name, group in df_weather.groupby('station_name'):
         group = group.copy()
@@ -159,18 +171,15 @@ def main():
             if group[col].isna().any():
                 group[col] = group[col].ffill().bfill()
         
-        # Điền các giá trị mặc định nếu tất cả đều NaN
         if group['RH'].isna().all(): group['RH'] = 75.0
         if group['CAPE'].isna().all(): group['CAPE'] = 500.0
         if group['PRES'].isna().all(): group['PRES'] = 101000.0
         if group['TMP'].isna().all(): group['TMP'] = 300.0
         
-        # 2. Tạo mô phỏng khoa học cho PWAT nếu thiếu
         if group['PWAT'].isna().any() or (group['PWAT'] == 0).all() or group['PWAT'].isna().all():
             group['PWAT'] = 30.0 + (group['RH'] - 50.0) * 0.4 + (group['TMP'] - 298.0) * 1.5 + np.random.normal(0, 2.0, len(group))
             group['PWAT'] = group['PWAT'].clip(lower=10.0, upper=80.0)
 
-        # 3. Tạo mô phỏng khoa học cho APCP (Lượng mưa) nếu thiếu
         if group['APCP'].isna().any() or (group['APCP'] == 0).all() or group['APCP'].isna().all():
             apcp_sim = []
             for _, r in group.iterrows():
@@ -189,8 +198,76 @@ def main():
     df_weather_filled = pd.concat(filled_dfs, ignore_index=True)
     df_weather_filled = df_weather_filled.sort_values(by=['station_name', 'timestamp']).reset_index(drop=True)
 
-    print("\n--- DỮ LIỆU ĐA TRẠM SAU KHI TIỀN XỬ LÝ & ĐIỀN KHUYẾT ---")
-    print(f"Tổng số mẫu thực tế trích xuất (8 trạm * 6 file): {len(df_weather_filled)}")
+    # 2. TẢI VÀ ĐỒNG BỘ HÓA DỮ LIỆU HẢI DƯƠNG CHO TẬP THỰC TẾ
+    print("\n--- ĐỒNG BỘ HÓA DỮ LIỆU SÓNG VÀ HẢI LƯU THỜI GIAN THỰC TỪ OPEN-METEO ---")
+    # Lấy danh sách các ngày độc lập trong tập dữ liệu để tải hàng loạt (batching)
+    unique_dates = df_weather_filled['timestamp'].dt.date.unique()
+    marine_data_dict = {}
+    
+    for d in unique_dates:
+        date_str = d.strftime("%Y-%m-%d")
+        print(f"  Đang tải dữ liệu hải dương cho ngày: {date_str}...")
+        marine_json = fetch_multi_location_marine_for_date(date_str)
+        if marine_json:
+            marine_data_dict[date_str] = marine_json
+        time.sleep(0.5)
+        
+    # Tạo các cột hải dương mặc định
+    df_weather_filled['WAVE_H'] = 1.0
+    df_weather_filled['WAVE_DIR'] = 180.0
+    df_weather_filled['WAVE_P'] = 5.0
+    df_weather_filled['CURRENT_VEL'] = 0.2
+    df_weather_filled['CURRENT_DIR'] = 180.0
+    df_weather_filled['SST'] = df_weather_filled['TMP'] # Mặc định bằng nhiệt độ không khí
+    df_weather_filled['storm_severity'] = 0
+    
+    # Khớp dữ liệu hải dương vào DataFrame chính
+    station_names = list(STATIONS.keys())
+    for idx, row in df_weather_filled.iterrows():
+        date_str = row['timestamp'].strftime("%Y-%m-%d")
+        hour_val = row['timestamp'].hour
+        station_name = row['station_name']
+        st_idx = station_names.index(station_name)
+        
+        if date_str in marine_data_dict:
+            try:
+                hourly_m = marine_data_dict[date_str][st_idx].get('hourly', {})
+                # Tìm chỉ số tương ứng với giờ của hàng
+                time_list = [datetime.datetime.strptime(t, "%Y-%m-%dT%H:00") for t in hourly_m['time']]
+                target_dt = datetime.datetime.combine(row['timestamp'].date(), datetime.time(hour_val, 0))
+                time_idx = time_list.index(target_dt)
+                
+                df_weather_filled.at[idx, 'WAVE_H'] = float(hourly_m['wave_height'][time_idx])
+                df_weather_filled.at[idx, 'WAVE_DIR'] = float(hourly_m['wave_direction'][time_idx])
+                df_weather_filled.at[idx, 'WAVE_P'] = float(hourly_m['wave_period'][time_idx])
+                df_weather_filled.at[idx, 'CURRENT_VEL'] = float(hourly_m['ocean_current_velocity'][time_idx])
+                df_weather_filled.at[idx, 'CURRENT_DIR'] = float(hourly_m['ocean_current_direction'][time_idx])
+                df_weather_filled.at[idx, 'SST'] = float(hourly_m['sea_surface_temperature'][time_idx]) + 273.15
+            except Exception:
+                pass
+                
+        # Tính toán storm_severity thực tế cho tập thực tế
+        wind_ms = np.sqrt(row['UGRD']**2 + row['VGRD']**2)
+        pres_pa = row['PRES']
+        
+        if wind_ms >= 32.7 or pres_pa < 96000.0:
+            sev = 4
+        elif 24.5 <= wind_ms < 32.7 or 96000.0 <= pres_pa < 99000.0:
+            sev = 3
+        elif 17.2 <= wind_ms < 24.5 or 99000.0 <= pres_pa < 100000.0:
+            sev = 2
+        elif 10.8 <= wind_ms < 17.2 or 100000.0 <= pres_pa < 100800.0:
+            sev = 1
+        else:
+            sev = 0
+        df_weather_filled.at[idx, 'storm_severity'] = sev
+
+    # Điền khuyết lần cuối cho các cột hải dương mới tạo
+    for col in ['WAVE_H', 'WAVE_DIR', 'WAVE_P', 'CURRENT_VEL', 'CURRENT_DIR', 'SST']:
+        df_weather_filled[col] = pd.to_numeric(df_weather_filled[col], errors='coerce').ffill().bfill().fillna(0.0)
+
+    print("\n--- DỮ LIỆU ĐA TRẠM SAU KHI TIỀN XỬ LÝ & ĐỒNG BỘ HẢI DƯƠNG ---")
+    print(f"Tổng số mẫu thực tế trích xuất (8 trạm): {len(df_weather_filled)}")
     print(df_weather_filled.head(5))
     
     # Lưu kết quả ETL ra file CSV

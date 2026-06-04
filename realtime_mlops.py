@@ -58,9 +58,7 @@ def get_vietnam_time():
     return datetime.datetime.now()
 
 def download_grib_file(date_str, cycle_str):
-    """
-    Tải tệp GRIB2 từ NOAA NOMADS cho chu kỳ GFS cụ thể.
-    """
+    """Tải tệp GRIB2 từ NOAA NOMADS cho chu kỳ GFS cụ thể."""
     file_name = f"gfs.{date_str}_{cycle_str}.f000.grib2"
     file_path = os.path.join(DOWNLOAD_DIR, file_name)
     
@@ -86,8 +84,21 @@ def download_grib_file(date_str, cycle_str):
         log_message(f"Lỗi kết nối khi tải {file_name}: {e}")
         return None
 
+def fetch_multi_location_marine_for_date(date_str):
+    """Tải dữ liệu sóng và hải lưu cho cả 8 trạm tại một ngày cụ thể."""
+    lats = ",".join([str(STATIONS[name]["lat"]) for name in STATIONS])
+    lons = ",".join([str(STATIONS[name]["lon"]) for name in STATIONS])
+    url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lats}&longitude={lons}&start_date={date_str}&end_date={date_str}&hourly=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature"
+    try:
+        r = requests.get(url, timeout=15)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return None
+
 def extract_all_stations_from_grib(file_path):
-    """Trích xuất biến khí quyển cho cả 8 trạm tiêu biểu từ tệp GRIB2."""
+    """Trích xuất biến khí quyển cho cả 8 trạm từ tệp GRIB2."""
     try:
         datasets = cfgrib.open_datasets(file_path)
     except Exception as e:
@@ -153,8 +164,8 @@ def extract_all_stations_from_grib(file_path):
     return records
 
 def run_ml_pipeline():
-    """Chạy toàn bộ pipeline ETL đa trạm -> Kết hợp bão lịch sử cấp độ bão -> Train XGBoost."""
-    log_message("BẮT ĐẦU CHẠY PIPELINE HUẤN LUYỆN MÔ HÌNH ĐA TRẠM KẾT HỢP CẤP ĐỘ BÃO MULTI-LEVEL...")
+    """Chạy toàn bộ pipeline MLOps kết hợp Khí tượng - Hải dương 38 đặc trưng."""
+    log_message("BẮT ĐẦU CHẠY PIPELINE HUẤN LUYỆN MÔ HÌNH HẢI DƯƠNG - KHÍ TƯỢNG ĐA TRẠM...")
     
     # 1. Đọc dữ liệu thực tế GFS đa trạm
     if not os.path.exists(EXTRACTED_CSV):
@@ -163,10 +174,9 @@ def run_ml_pipeline():
         
     df_real = pd.read_csv(EXTRACTED_CSV)
     df_real['timestamp'] = pd.to_datetime(df_real['timestamp'])
-    if 'storm_severity' not in df_real.columns:
-        df_real['storm_severity'] = 0
-        
-    core_cols = ['timestamp', 'station_name', 'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'PRES', 'APCP', 'storm_severity']
+    
+    core_cols = ['timestamp', 'station_name', 'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'PRES', 
+                 'WAVE_H', 'WAVE_DIR', 'WAVE_P', 'CURRENT_VEL', 'CURRENT_DIR', 'SST', 'storm_severity', 'APCP']
     df_real = df_real[core_cols]
 
     # 2. Đọc dữ liệu lịch sử bão đa trạm
@@ -185,7 +195,8 @@ def run_ml_pipeline():
         lambda g: (g['time_diff'] > pd.Timedelta(hours=12)).fillna(False).cumsum()
     )
     
-    features_to_lag = ['TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'APCP']
+    # Tính trễ cho cả Chiều cao sóng và Tốc độ hải lưu
+    features_to_lag = ['TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'APCP', 'WAVE_H', 'CURRENT_VEL']
     lagged_dfs = []
     
     for (station, pid), group in df_combined.groupby(['station_name', 'period_id']):
@@ -217,7 +228,7 @@ def run_ml_pipeline():
     y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
 
     model = XGBRegressor(
-        n_estimators=150, learning_rate=0.03, max_depth=6, subsample=0.8, colsample_bytree=0.9, random_state=42
+        n_estimators=200, learning_rate=0.03, max_depth=7, subsample=0.8, colsample_bytree=0.9, random_state=42
     )
     model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
     
@@ -229,15 +240,15 @@ def run_ml_pipeline():
     # Xuất mô hình
     model.save_model(MODEL_JSON)
     
-    log_message(f"--- KẾT QUẢ HUẤN LUYỆN ĐA TRẠM CẤP ĐỘ BÃO ---")
+    log_message(f"--- KẾT QUẢ HUẤN LUYỆN KHÍ TƯỢNG - HẢI DƯƠNG ---")
     log_message(f"  Số mẫu dữ liệu huấn luyện: {len(X_train)} | Tập kiểm thử: {len(X_test)}")
     log_message(f"  Sai số MAE: {mae:.4f} mm")
     log_message(f"  Sai số RMSE: {rmse:.4f} mm")
-    log_message(f"  Mô hình đã được cập nhật thành công tại: {MODEL_JSON}")
+    log_message(f"  Mô hình 38 đặc trưng đã được cập nhật thành công tại: {MODEL_JSON}")
     return True
 
 def main():
-    log_message("=== KHỞI CHẠY HỆ THỐNG MLOPS ĐA TRẠM THỜI GIAN THỰC ===")
+    log_message("=== KHỞI CHẠY HỆ THỐNG MLOPS KHÍ TƯỢNG - HẢI DƯƠNG ĐA TRẠM THỜI GIAN THỰC ===")
     log_message(f"Hệ thống sẽ chạy liên tục từ bây giờ cho đến 12:00 PM trưa ngày 04/06/2026.")
     
     target_end_time = datetime.datetime(2026, 6, 4, 12, 0, 0)
@@ -279,11 +290,14 @@ def main():
                     station_records = extract_all_stations_from_grib(downloaded_path)
                     
                     if station_records:
-                        # Chuẩn bị dữ liệu đa trạm để nạp vào CSV
+                        # 2. Đồng bộ hóa sóng biển và hải lưu trực tiếp tại ngày này
+                        marine_json = fetch_multi_location_marine_for_date(date_str)
+                        
                         df_real = pd.read_csv(EXTRACTED_CSV)
                         df_real['timestamp'] = pd.to_datetime(df_real['timestamp'])
                         
                         new_rows = []
+                        station_names = list(STATIONS.keys())
                         for rec in station_records:
                             if rec['timestamp'] is None:
                                 continue
@@ -317,6 +331,32 @@ def main():
                                 rec['storm_severity'] = 1  # Áp thấp nhiệt đới
                             else:
                                 rec['storm_severity'] = 0
+                                
+                            # Thiết lập giá trị mặc định cho hải dương
+                            rec['WAVE_H'] = 1.0
+                            rec['WAVE_DIR'] = 180.0
+                            rec['WAVE_P'] = 5.0
+                            rec['CURRENT_VEL'] = 0.2
+                            rec['CURRENT_DIR'] = 180.0
+                            rec['SST'] = rec['TMP']
+                            
+                            # Khớp dữ liệu hải dương thời gian thực từ Open-Meteo
+                            if marine_json:
+                                try:
+                                    st_idx = station_names.index(rec['station_name'])
+                                    hourly_m = marine_json[st_idx].get('hourly', {})
+                                    time_list = [datetime.datetime.strptime(t, "%Y-%m-%dT%H:00") for t in hourly_m['time']]
+                                    target_dt = datetime.datetime.combine(rec['timestamp'].date(), datetime.time(rec['timestamp'].hour, 0))
+                                    time_idx = time_list.index(target_dt)
+                                    
+                                    rec['WAVE_H'] = float(hourly_m['wave_height'][time_idx])
+                                    rec['WAVE_DIR'] = float(hourly_m['wave_direction'][time_idx])
+                                    rec['WAVE_P'] = float(hourly_m['wave_period'][time_idx])
+                                    rec['CURRENT_VEL'] = float(hourly_m['ocean_current_velocity'][time_idx])
+                                    rec['CURRENT_DIR'] = float(hourly_m['ocean_current_direction'][time_idx])
+                                    rec['SST'] = float(hourly_m['sea_surface_temperature'][time_idx]) + 273.15
+                                except Exception:
+                                    pass
                                     
                             new_rows.append({
                                 'timestamp': rec['timestamp'],
@@ -329,8 +369,13 @@ def main():
                                 'VGRD': rec['VGRD'],
                                 'CAPE': rec['CAPE'],
                                 'PWAT': rec['PWAT'],
-                                'APCP': rec['APCP'],
                                 'PRES': rec['PRES'],
+                                'WAVE_H': rec['WAVE_H'],
+                                'WAVE_DIR': rec['WAVE_DIR'],
+                                'WAVE_P': rec['WAVE_P'],
+                                'CURRENT_VEL': rec['CURRENT_VEL'],
+                                'CURRENT_DIR': rec['CURRENT_DIR'],
+                                'SST': rec['SST'],
                                 'storm_severity': rec['storm_severity'],
                                 'file_name': file_name
                             })
@@ -343,7 +388,7 @@ def main():
                         df_merged = df_merged.sort_values(by=['station_name', 'timestamp']).reset_index(drop=True)
                         
                         df_merged.to_csv(EXTRACTED_CSV, index=False)
-                        log_message(f"Đã thêm và hợp nhất thành công dữ liệu đa trạm cấp độ bão của chu kỳ {date_str}_{cycle_str}!")
+                        log_message(f"Đã thêm, đồng bộ hải dương và hợp nhất thành công dữ liệu đa trạm của chu kỳ {date_str}_{cycle_str}!")
                         new_data_extracted = True
         
         if new_data_extracted or iteration == 1:
