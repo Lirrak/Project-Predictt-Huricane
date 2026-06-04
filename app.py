@@ -18,6 +18,54 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Xác định xem ứng dụng đang chạy trên Streamlit Cloud hay Local (Raspberry Pi)
+IS_CLOUD = os.path.exists("/mount/src") or "STREAMLIT_SHARING_AUTHORITY" in os.environ
+
+# Chủ đề (Topic) ntfy.sh để gửi tín hiệu heartbeat độc nhất cho tài khoản Lirrak
+HEARTBEAT_TOPIC = "lirrak_project_hurricane_heartbeat_6fd7a"
+
+def heartbeat_thread_func():
+    url = f"https://ntfy.sh/{HEARTBEAT_TOPIC}"
+    while True:
+        try:
+            requests.post(url, data="ping", timeout=5)
+        except Exception:
+            pass
+        time.sleep(15)
+
+@st.cache_resource
+def start_heartbeat():
+    if not IS_CLOUD:
+        import threading
+        t = threading.Thread(target=heartbeat_thread_func, daemon=True)
+        t.start()
+        return "Thread Started on Local"
+    return "No Thread Started on Cloud"
+
+start_heartbeat()
+
+def check_pi_status():
+    import json
+    url = f"https://ntfy.sh/{HEARTBEAT_TOPIC}/json?poll=1"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            last_time = 0
+            for line in r.text.strip().split("\n"):
+                if line:
+                    data = json.loads(line)
+                    if data.get('event') == 'message' and data.get('message') == 'ping':
+                        last_time = max(last_time, data.get('time', 0))
+            if last_time > 0:
+                time_diff = time.time() - last_time
+                if time_diff < 40:
+                    return "ONLINE", int(time_diff)
+                else:
+                    return "OFFLINE", int(time_diff)
+    except Exception:
+        pass
+    return "UNKNOWN", None
+
 # Thư mục gốc dự án và tệp mô hình
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_JSON = os.path.join(BASE_DIR, "xgboost_rain_model.json")
@@ -354,6 +402,19 @@ if model is None:
 # --- SIDEBAR - BẢNG ĐIỀU KHIỂN ---
 st.sidebar.image("https://img.icons8.com/clouds/200/typhoon.png", width=150)
 st.sidebar.title("🛠️ Bảng Điều Khiển")
+
+# --- HIỂN THỊ TRẠNG THÁI RASPBERRY PI ---
+st.sidebar.subheader("🔌 Trạng thái máy chủ biên")
+if IS_CLOUD:
+    status, diff = check_pi_status()
+    if status == "ONLINE":
+        st.sidebar.success(f"🟢 Raspberry Pi: ONLINE (Cập nhật {diff}s trước)")
+    elif status == "OFFLINE":
+        st.sidebar.error(f"🔴 Raspberry Pi: OFFLINE (Lần cuối {diff}s trước)")
+    else:
+        st.sidebar.warning("⚠️ Raspberry Pi: CHƯA KẾT NỐI")
+else:
+    st.sidebar.success("🟢 Raspberry Pi: ONLINE (Đang chạy trực tiếp)")
 
 # Lựa chọn Chế độ Bão
 st.sidebar.subheader("🌪️ Chế độ Khí tượng")
