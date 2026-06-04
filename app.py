@@ -333,18 +333,22 @@ st.markdown('<p class="sub-title">Ứng dụng web thời gian thực tích hợ
 @st.cache_resource
 def load_xgboost_model():
     if not os.path.exists(MODEL_JSON):
-        return None
+        return None, f"Tệp tin không tồn tại tại đường dẫn: {MODEL_JSON}"
     try:
         model = XGBRegressor()
         model.load_model(MODEL_JSON)
-        return model
-    except Exception:
-        return None
+        return model, None
+    except Exception as e:
+        import traceback
+        return None, traceback.format_exc()
 
-model = load_xgboost_model()
+model, error_msg = load_xgboost_model()
 
 if model is None:
     st.error(f"❌ Không thể tìm thấy hoặc nạp tệp mô hình tại: `{MODEL_JSON}`. Vui lòng chạy `train_model.py` để huấn luyện trước.")
+    if error_msg:
+        st.info("Chi tiết lỗi hệ thống gặp phải:")
+        st.code(error_msg, language="python")
     st.stop()
 
 # --- SIDEBAR - BẢNG ĐIỀU KHIỂN ---
