@@ -1,0 +1,20 @@
+# Ignore GRIB2 meteorological data files (heavy data)
+gfs_data/
+*.grib2
+*.idx
+
+# Ignore generated datasets (local caches)
+extracted_weather.csv
+engineered_features.csv
+
+# Ignore logs
+*.log
+mlops_training_log.txt
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.ipynb_checkpoints/
+.vscode/

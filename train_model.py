@@ -1,0 +1,164 @@
+import os
+import sys
+import numpy as np
+import pandas as pd
+from xgboost import XGBRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+# Đảm bảo mã hóa đầu ra là UTF-8 để hiển thị tiếng Việt trên Windows
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
+BASE_DIR = "C:/Users/Lirrak/Documents/Born Again/Project Predict Huricane"
+EXTRACTED_CSV = os.path.join(BASE_DIR, "extracted_weather.csv")
+HISTORICAL_CSV = os.path.join(BASE_DIR, "historical_storm_weather.csv")
+ENGINEERED_CSV = os.path.join(BASE_DIR, "engineered_features.csv")
+MODEL_JSON = os.path.join(BASE_DIR, "xgboost_rain_model.json")
+
+def process_and_engineer_features(df):
+    """
+    Thực hiện Feature Engineering nâng cao độc lập cho từng TRẠM khí tượng và từng PHÂN ĐOẠN thời gian:
+    1. Sắp xếp dữ liệu theo trạm và thời gian.
+    2. Xác định các phân đoạn thời gian liên tục (Periods) cho từng trạm độc lập.
+    3. Tính toán Lag và Rolling độc lập theo cặp (station_name, period_id) để tránh tràn ranh giới không gian/thời gian.
+    4. Trích xuất đặc trưng thời gian (hour, month).
+    """
+    df = df.sort_values(by=['station_name', 'timestamp']).reset_index(drop=True)
+    
+    # Tính toán chênh lệch thời gian giữa các hàng của từng trạm độc lập
+    df['time_diff'] = df.groupby('station_name')['timestamp'].diff()
+    
+    # Đánh nhãn phân đoạn (period_id) riêng biệt cho từng trạm
+    # Bắt đầu phân đoạn mới nếu khoảng cách thời gian lớn hơn 12 tiếng hoặc là hàng đầu tiên của trạm (NaT)
+    df['period_id'] = df.groupby('station_name', group_keys=False).apply(
+        lambda g: (g['time_diff'] > pd.Timedelta(hours=12)).fillna(False).cumsum()
+    )
+    
+    features_to_lag = ['TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'APCP']
+    lagged_dfs = []
+    
+    # Duyệt và xử lý độc lập cho từng tổ hợp (Trạm, Phân đoạn)
+    for (station, pid), group in df.groupby(['station_name', 'period_id']):
+        group = group.copy()
+        
+        # 1. Tạo biến trễ (Lag)
+        for col in features_to_lag:
+            group[f'{col}_lag1'] = group[col].shift(1)
+            group[f'{col}_lag2'] = group[col].shift(2)
+            
+        # 2. Tạo biến thống kê động (Rolling)
+        group['RH_rolling_mean_12h'] = group['RH'].rolling(window=4).mean()
+        group['TMP_rolling_mean_12h'] = group['TMP'].rolling(window=4).mean()
+        
+        lagged_dfs.append(group)
+        
+    df_engineered = pd.concat(lagged_dfs, ignore_index=True)
+    
+    # 3. Trích xuất đặc trưng thời gian
+    df_engineered['hour'] = df_engineered['timestamp'].dt.hour
+    df_engineered['month'] = df_engineered['timestamp'].dt.month
+    
+    # Loại bỏ các cột phụ trợ
+    df_engineered = df_engineered.drop(columns=['period_id', 'time_diff'])
+    
+    # Loại bỏ dòng chứa giá trị khuyết do tính trễ/trung bình trượt
+    df_clean = df_engineered.dropna().reset_index(drop=True)
+    return df_clean
+
+def main():
+    print("=== PIPELINE HUẤN LUYỆN MÔ HÌNH ĐA TRẠM BIỂN ĐÔNG ===")
+    
+    # 1. Đọc dữ liệu thực tế GFS đa trạm hiện tại
+    if not os.path.exists(EXTRACTED_CSV):
+        print(f"Lỗi: Không tìm thấy file {EXTRACTED_CSV}")
+        return
+    df_real = pd.read_csv(EXTRACTED_CSV)
+    df_real['timestamp'] = pd.to_datetime(df_real['timestamp'])
+    
+    # Gán nhãn is_storm = 0 cho dữ liệu thời tiết thực tế
+    if 'is_storm' not in df_real.columns:
+        df_real['is_storm'] = 0
+        
+    core_cols = ['timestamp', 'station_name', 'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'PRES', 'APCP', 'is_storm']
+    df_real = df_real[core_cols]
+
+    # 2. Đọc dữ liệu lịch sử bão đa trạm
+    if os.path.exists(HISTORICAL_CSV):
+        print(f"Đọc dữ liệu lịch sử bão đa trạm từ {HISTORICAL_CSV}...")
+        df_hist = pd.read_csv(HISTORICAL_CSV)
+        df_hist['timestamp'] = pd.to_datetime(df_hist['timestamp'])
+        df_hist = df_hist[core_cols]
+        
+        # Hợp nhất hai luồng dữ liệu
+        print(f"Hợp nhất: {len(df_real)} mẫu thực tế đa trạm và {len(df_hist)} mẫu bão lịch sử đa trạm.")
+        df_combined = pd.concat([df_real, df_hist], ignore_index=True)
+    else:
+        print("Cảnh báo: Không tìm thấy file dữ liệu lịch sử bão, chỉ sử dụng dữ liệu đa trạm hiện tại.")
+        df_combined = df_real.copy()
+
+    # 3. Thực hiện Feature Engineering đa trạm phân đoạn
+    print("Thực hiện Feature Engineering đa trạm theo phân đoạn...")
+    df_features = process_and_engineer_features(df_combined)
+    df_features.to_csv(ENGINEERED_CSV, index=False)
+    print(f"Đã lưu tệp đặc trưng đa trạm hoàn chỉnh tại: {ENGINEERED_CSV}")
+    print(f"Tổng số mẫu đặc trưng đa trạm hợp lệ: {len(df_features)}")
+    
+    # 4. Xác định Input (X) và Target (y)
+    # Loại bỏ APCP, timestamp, và station_name ra khỏi X
+    target_col = 'APCP'
+    feature_cols = [col for col in df_features.columns if col not in [target_col, 'timestamp', 'station_name']]
+    
+    X = df_features[feature_cols]
+    y = df_features[target_col]
+    
+    print(f"Số lượng đặc trưng đầu vào ({len(feature_cols)}): {feature_cols}")
+
+    # 5. Chia tập dữ liệu (80% Train, 20% Test) theo ranh giới trạm và dòng thời gian
+    # Việc chia tách được sắp xếp theo thời gian để phản ánh đúng khả năng kiểm tra khả năng suy diễn tương lai
+    df_features = df_features.sort_values(by='timestamp').reset_index(drop=True)
+    split_idx = int(len(df_features) * 0.8)
+    
+    X_train = df_features.iloc[:split_idx][feature_cols]
+    y_train = df_features.iloc[:split_idx][target_col]
+    X_test = df_features.iloc[split_idx:][feature_cols]
+    y_test = df_features.iloc[split_idx:][target_col]
+
+    print(f"Mẫu huấn luyện đa trạm: {len(X_train)} | Mẫu kiểm thử đa trạm: {len(X_test)}")
+
+    # 6. Khởi tạo và huấn luyện XGBoost Regressor
+    model = XGBRegressor(
+        n_estimators=150,      # Tăng số lượng cây cho tập dữ liệu đa trạm lớn hơn
+        learning_rate=0.03,    # Giảm học suất để tăng độ mượt của biên quyết định
+        max_depth=6,
+        subsample=0.8,
+        colsample_bytree=0.9,
+        random_state=42
+    )
+    
+    print("\n--- BẮT ĐẦU HUẤN LUYỆN XGBOOST TRÊN BỘ DỮ LIỆU ĐA TRẠM KẾT HỢP ---")
+    model.fit(
+        X_train, y_train,
+        eval_set=[(X_test, y_test)],
+        verbose=15  # Hiển thị log mỗi 15 cây
+    )
+    
+    # 7. Dự báo và đánh giá sai số
+    y_pred = model.predict(X_test)
+    mae = mean_absolute_error(y_test, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+
+    print(f"\n==========================================")
+    print(f"--- KẾT QUẢ ĐÁNH GIÁ MÔ HÌNH ĐA TRẠM BIỂN ĐÔNG ---")
+    print(f"Sai số tuyệt đối trung bình (MAE): {mae:.4f} mm")
+    print(f"Sai số bình phương trung bình (RMSE): {rmse:.4f} mm")
+    print(f"==========================================")
+
+    # 8. Xuất mô hình thành file JSON
+    model.save_model(MODEL_JSON)
+    print(f"Đã lưu mô hình XGBoost đa trạm thành công tại: {MODEL_JSON}")
+
+if __name__ == "__main__":
+    main()
