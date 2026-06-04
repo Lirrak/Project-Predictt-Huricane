@@ -443,9 +443,9 @@ with col_map:
             "Trạng Thái": True,
             "Kích thước marker": False
         },
-        zoom=5.0,
-        center={"lat": 14.5, "lon": 111.0},
-        height=550,
+        zoom=4.1,
+        center={"lat": 14.1, "lon": 111.0},
+        height=600,
         title="Bản đồ các Trạm quan trắc (Màu sắc: Cấp bão | Kích thước: Dự báo mưa)"
     )
     
