@@ -6,15 +6,17 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
-# Đường dẫn thư mục dự án trên Raspberry Pi
-PROJECT_DIR="/home/lirrak/Project-Predictt-Hurricane"
-USER_NAME="lirrak"
+# TỰ ĐỘNG PHÁT HIỆN: Thư mục hiện tại và tên User đang đăng nhập
+PROJECT_DIR="$(pwd)"
+USER_NAME="$(logname)"
 SERVICE_NAME="streamlit-forecast"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 
 echo "======================================================"
-echo "⚙️  ĐANG CẤU HÌNH DỊCH VỤ CHẠY NGẦM TRÊN RASPBERRY PI..."
+echo "⚙️  ĐANG CẤU HÌNH DỊCH VỤ CHẠY NGẦM ĐỘNG TRÊN RASPBERRY PI..."
 echo "======================================================"
+echo "📁 Thư mục phát hiện: ${PROJECT_DIR}"
+echo "👤 Người dùng phát hiện: ${USER_NAME}"
 
 # 1. Xác định đường dẫn Python / Streamlit thực thi
 if [ -f "${PROJECT_DIR}/venv/bin/streamlit" ]; then
@@ -56,7 +58,7 @@ systemctl restart ${SERVICE_NAME}.service
 
 echo ""
 echo "======================================================"
-echo "🎉 HOÀN THÀNH THIẾT LẬP DỊCH VỤ CHẠY NGẦM!"
+echo "🎉 HOÀN THÀNH THIẾT LẬP DỊCH VỤ CHẠY NGẦM ĐỘNG CHUẨN XÁC!"
 echo "======================================================"
 echo "👉 Ứng dụng Streamlit đang CHẠY NGẦM trong hệ thống."
 echo "👉 Ứng dụng sẽ TỰ ĐỘNG BẬT mỗi khi Raspberry Pi khởi động lại."
