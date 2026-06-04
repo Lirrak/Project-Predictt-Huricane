@@ -18,14 +18,11 @@ echo "======================================================"
 echo "📁 Thư mục phát hiện: ${PROJECT_DIR}"
 echo "👤 Người dùng phát hiện: ${USER_NAME}"
 
-# 1. Xác định đường dẫn Python / Streamlit thực thi
-if [ -f "${PROJECT_DIR}/venv/bin/streamlit" ]; then
-  echo "🟢 Phát hiện Môi trường ảo (venv)."
-  EXEC_PATH="${PROJECT_DIR}/venv/bin/python3 -m streamlit run app.py"
-else
-  echo "🟢 Phát hiện cài đặt Global."
-  EXEC_PATH="/usr/bin/python3 -m streamlit run app.py"
-fi
+# Cấp quyền thực thi cho file chạy chính
+chmod +x "${PROJECT_DIR}/run_app.sh"
+
+# Đường dẫn ExecStart trỏ tới bash script chạy chính
+EXEC_PATH="/bin/bash ${PROJECT_DIR}/run_app.sh"
 
 # 2. Tạo file cấu hình dịch vụ Systemd
 echo "📝 Đang tạo tệp dịch vụ tại ${SERVICE_FILE}..."
@@ -61,6 +58,7 @@ echo "======================================================"
 echo "🎉 HOÀN THÀNH THIẾT LẬP DỊCH VỤ CHẠY NGẦM ĐỘNG CHUẨN XÁC!"
 echo "======================================================"
 echo "👉 Ứng dụng Streamlit đang CHẠY NGẦM trong hệ thống."
+echo "👉 Dịch vụ tự động gửi nhịp đập ONLINE liên tục lên Cloud."
 echo "👉 Ứng dụng sẽ TỰ ĐỘNG BẬT mỗi khi Raspberry Pi khởi động lại."
 echo ""
 echo "💡 Một số câu lệnh hữu ích để quản lý dịch vụ:"
