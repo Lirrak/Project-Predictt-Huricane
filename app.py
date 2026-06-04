@@ -328,7 +328,7 @@ def predict_station(model, station_name, coords, simulated_storm_level=None):
         'station_name': station_name,
         'latitude': coords['lat'],
         'longitude': coords['lon'],
-        'time': row_now['time'].strftime("%Y-%m-%d %H:%M"),
+        'time': (row_now['time'] + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M"),
         'temp': float(row_now['temp_2m']),
         'rh': float(row_now['rh_2m']),
         'wind_speed': float(row_now['wind_speed']),
@@ -549,7 +549,7 @@ with col_detail:
     # Hiển thị tóm tắt tình trạng bão của trạm
     sev_lvl = selected_row['storm_severity']
     st.markdown(f"#### Trạng thái hiện tại: <span style='color:{SEVERITY_COLORS[sev_lvl]}; font-weight:bold; font-size: 20px;'>{SEVERITY_NAMES[sev_lvl].upper()} ({rain_class})</span>", unsafe_allow_html=True)
-    st.write(f"⏱️ *Thời gian cập nhật dữ liệu: {selected_row['time']} (UTC)*")
+    st.write(f"⏱️ *Thời gian cập nhật dữ liệu: {selected_row['time']} (Giờ Việt Nam - ICT)*")
 
     # Vẽ 2 Gauge đồ họa siêu đẹp cho: Gió & Sóng, Dự báo mưa
     col_g1, col_g2 = st.columns(2)
@@ -659,7 +659,7 @@ df_display = df_results.copy()
 df_display['storm_severity'] = df_display['storm_severity'].map(SEVERITY_NAMES)
 df_display = df_display.rename(columns={
     'station_name': 'Trạm Khí Tượng',
-    'time': 'Thời Gian (UTC)',
+    'time': 'Thời Gian (Giờ VN)',
     'temp': 'Nhiệt Độ (°C)',
     'rh': 'Độ Ẩm (%)',
     'wind_speed': 'Gió (km/h)',
@@ -671,7 +671,7 @@ df_display = df_display.rename(columns={
     'pred_rain': 'Dự Báo Mưa (mm)'
 })
 
-cols_to_show = ['Trạm Khí Tượng', 'Thời Gian (UTC)', 'Nhiệt Độ (°C)', 'Độ Ẩm (%)', 'Gió (km/h)', 'Sóng Cao (m)', 'Hải Lưu (m/s)', 'Nhiệt Biển (°C)', 'Áp Suất (hPa)', 'Cấp Độ Bão', 'Dự Báo Mưa (mm)']
+cols_to_show = ['Trạm Khí Tượng', 'Thời Gian (Giờ VN)', 'Nhiệt Độ (°C)', 'Độ Ẩm (%)', 'Gió (km/h)', 'Sóng Cao (m)', 'Hải Lưu (m/s)', 'Nhiệt Biển (°C)', 'Áp Suất (hPa)', 'Cấp Độ Bão', 'Dự Báo Mưa (mm)']
 st.dataframe(df_display[cols_to_show].style.format({
     'Nhiệt Độ (°C)': '{:.1f}',
     'Độ Ẩm (%)': '{:.1f}',
