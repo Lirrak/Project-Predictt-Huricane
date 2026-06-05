@@ -371,7 +371,7 @@ def make_prediction_for_station(models, station_name, coords, simulated_storm_le
     
     return {
         'station_name': station_name,
-        'time': row_now['time'].strftime("%Y-%m-%d %H:%M"),
+        'time': (row_now['time'] + datetime.timedelta(hours=7)).strftime("%Y-%m-%d %H:%M"),
         'temp': row_now['temp_2m'],
         'rh': row_now['rh_2m'],
         'wind_speed': row_now['wind_speed'],
@@ -440,7 +440,7 @@ def main():
 
     # 3. Hiển thị bảng điều khiển dự báo hải dương khí tượng siêu đẹp
     print("\n+-----------------+-------------------+------------+----------+-------------------+------------+-----------+-----------+-------------------+---------------+------------------+")
-    print("| Trạm Khí Tượng  | Thời Gian (UTC)   | Nhiệt Độ   | Độ Ẩm    | TỐC ĐỘ GIÓ (D.báo)| Sóng Biển  | Hải Lưu   | Nhiệt Biển| KHÍ ÁP (Dự báo)   | Cấp Độ Bão    | DỰ BÁO MƯA (24h) |")
+    print("| Trạm Khí Tượng  | Thời Gian (Giờ VN)| Nhiệt Độ   | Độ Ẩm    | TỐC ĐỘ GIÓ (D.báo)| Sóng Biển  | Hải Lưu   | Nhiệt Biển| KHÍ ÁP (Dự báo)   | Cấp Độ Bão    | DỰ BÁO MƯA (24h) |")
     print("+-----------------+-------------------+------------+----------+-------------------+------------+-----------+-----------+-------------------+---------------+------------------+")
     for r in results:
         rain_alert = "KHÔNG MƯA"
