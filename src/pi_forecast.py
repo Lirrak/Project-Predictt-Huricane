@@ -106,27 +106,29 @@ def load_climatology_priors():
 
 priors_dict = load_climatology_priors()
 
-def fetch_station_weather_api(lat, lon):
-    """Tải dữ liệu khí quyển hiện tại và 12 giờ qua từ Open-Meteo."""
-    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m,relative_humidity_2m,surface_pressure,precipitation,wind_speed_10m,wind_direction_10m&past_hours=12&forecast_days=1&timezone=GMT"
+def fetch_all_stations_raw_data():
+    lats = ",".join([str(coords['lat']) for coords in STATIONS.values()])
+    lons = ",".join([str(coords['lon']) for coords in STATIONS.values()])
+    
+    url_w = f"https://api.open-meteo.com/v1/forecast?latitude={lats}&longitude={lons}&hourly=temperature_2m,relative_humidity_2m,surface_pressure,precipitation,wind_speed_10m,wind_direction_10m&past_hours=12&forecast_days=1&timezone=GMT"
+    url_m = f"https://marine-api.open-meteo.com/v1/marine?latitude={lats}&longitude={lons}&hourly=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature&past_hours=12&forecast_days=1&timezone=GMT"
+    
+    data_w, data_m = None, None
     try:
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            return r.json(), False
+        r_w = requests.get(url_w, timeout=10)
+        if r_w.status_code == 200:
+            data_w = r_w.json()
     except Exception:
         pass
-    return None, True
-
-def fetch_station_marine_api(lat, lon):
-    """Tải dữ liệu sóng biển và hải lưu hiện tại và 12 giờ qua từ Open-Meteo."""
-    url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lat}&longitude={lon}&hourly=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature&past_hours=12&forecast_days=1&timezone=GMT"
+        
     try:
-        r = requests.get(url, timeout=5)
-        if r.status_code == 200:
-            return r.json(), False
+        r_m = requests.get(url_m, timeout=10)
+        if r_m.status_code == 200:
+            data_m = r_m.json()
     except Exception:
         pass
-    return None, True
+        
+    return data_w, data_m
 
 def compute_wind_components(speed_kmh, direction_deg):
     """Quy đổi hướng và tốc độ gió thành thành phần UGRD, VGRD (m/s)."""
@@ -139,7 +141,7 @@ def compute_wind_components(speed_kmh, direction_deg):
     except Exception:
         return 0.0, 0.0
 
-def make_prediction_for_station(models, station_name, coords, simulated_storm_level=None):
+def make_prediction_for_station(models, station_name, coords, station_w, station_m, simulated_storm_level=None):
     """
     Thu thập thời tiết khí quyển và hải dương để đưa ra dự đoán lượng mưa, gió, và khí áp.
     Tự động áp dụng failover ngoại tuyến nếu API lỗi.
@@ -147,9 +149,8 @@ def make_prediction_for_station(models, station_name, coords, simulated_storm_le
     global is_fallback_active
     model_rain, model_wind, model_pres = models
     
-    data_w, err_w = fetch_station_weather_api(coords['lat'], coords['lon'])
-    time.sleep(0.05)
-    data_m, err_m = fetch_station_marine_api(coords['lat'], coords['lon'])
+    err_w = station_w is None
+    err_m = station_m is None
     
     # 1. Cơ chế dự phòng ngoại tuyến nếu lỗi bất kỳ API nào
     if err_w or err_m:
@@ -196,8 +197,8 @@ def make_prediction_for_station(models, station_name, coords, simulated_storm_le
             hourly_m['ocean_current_velocity'] = [0.2 + sev * 0.28 for _ in times]
             hourly_m['sea_surface_temperature'] = [28.5 - sev * 0.9 for _ in times]
     else:
-        hourly_w = data_w.get('hourly', {})
-        hourly_m = data_m.get('hourly', {})
+        hourly_w = station_w.get('hourly', {})
+        hourly_m = station_m.get('hourly', {})
         
     # Ép kiểu dữ liệu
     df_raw = pd.DataFrame({
@@ -426,8 +427,16 @@ def main():
 
     # 2. Dự báo cho cả 37 trạm
     results = []
-    for name, coords in STATIONS.items():
-        res = make_prediction_for_station(models, name, coords, simulated_storm)
+    raw_w_list, raw_m_list = fetch_all_stations_raw_data()
+    
+    is_valid_w = isinstance(raw_w_list, list) and len(raw_w_list) == len(STATIONS)
+    is_valid_m = isinstance(raw_m_list, list) and len(raw_m_list) == len(STATIONS)
+    
+    for idx, (name, coords) in enumerate(STATIONS.items()):
+        station_w = raw_w_list[idx] if is_valid_w else None
+        station_m = raw_m_list[idx] if is_valid_m else None
+        
+        res = make_prediction_for_station(models, name, coords, station_w, station_m, simulated_storm)
         if res:
             results.append(res)
             
