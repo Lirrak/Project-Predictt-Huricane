@@ -762,6 +762,7 @@ with tab_monitor:
     # 5. Bổ sung Đồ thị Đa nhiệm thời gian thực (Real-time Multi-task Panel)
     st.markdown("<br>", unsafe_allow_html=True)
     df_raw_st = selected_row['df_raw']
+    now_utc_naive = datetime.datetime.utcnow()
     df_future = df_raw_st[df_raw_st['time'] >= now_utc_naive].copy()
     df_future['time_vn'] = df_future['time'] + datetime.timedelta(hours=7)
     
