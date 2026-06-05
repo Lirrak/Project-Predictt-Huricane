@@ -786,7 +786,10 @@ with tab_monitor:
         
         fig_trend.update_layout(
             title=dict(text=f"📈 Xu hướng Khí động học 24 Giờ Tiếp Theo - Trạm {selected_station_name}"),
-            xaxis=dict(title=dict(text="Thời gian (Giờ Việt Nam)")),
+            xaxis=dict(
+                domain=[0, 0.85],
+                title=dict(text="Thời gian (Giờ Việt Nam)")
+            ),
             yaxis=dict(
                 title=dict(text="Mưa (mm/h)", font=dict(color="#3498db")),
                 tickfont=dict(color="#3498db")
@@ -794,20 +797,19 @@ with tab_monitor:
             yaxis2=dict(
                 title=dict(text="Gió (km/h)", font=dict(color="#e74c3c")),
                 tickfont=dict(color="#e74c3c"),
-                anchor="free",
                 overlaying="y",
-                side="right",
-                position=0.85
+                side="right"
             ),
             yaxis3=dict(
                 title=dict(text="Khí áp (hPa)", font=dict(color="#2ecc71")),
                 tickfont=dict(color="#2ecc71"),
-                anchor="x",
+                anchor="free",
                 overlaying="y",
-                side="right"
+                side="right",
+                position=0.95
             ),
             height=380,
-            margin=dict(l=40, r=80, t=50, b=40),
+            margin=dict(l=50, r=120, t=50, b=40),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
         )
         st.plotly_chart(fig_trend, use_container_width=True)
