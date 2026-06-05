@@ -14,7 +14,7 @@ else
 fi
 
 # 1. Chạy tiến trình gửi tín hiệu ONLINE ở chế độ nền
-$PYTHON_BIN heartbeat.py &
+$PYTHON_BIN src/heartbeat.py &
 HEARTBEAT_PID=$!
 
 # 2. Chạy máy chủ giao diện Streamlit chính

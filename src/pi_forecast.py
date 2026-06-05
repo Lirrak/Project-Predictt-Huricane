@@ -15,8 +15,10 @@ if sys.stdout.encoding != 'utf-8':
     except Exception:
         pass
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_JSON = os.path.join(BASE_DIR, "models", "xgboost_rain_model.json")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_JSON_RAIN = os.path.join(BASE_DIR, "models", "xgboost_rain_model.json")
+MODEL_JSON_WIND = os.path.join(BASE_DIR, "models", "xgboost_wind_model.json")
+MODEL_JSON_PRES = os.path.join(BASE_DIR, "models", "xgboost_pres_model.json")
 
 # Danh sách 37 trạm khí tượng bao gồm 32 trạm đất liền/ven biển quanh Biển Đông và 5 trạm phao ảo vùng biển sâu
 STATIONS = {
@@ -62,14 +64,15 @@ STATIONS = {
     "Luzon Strait": {"lat": 20.00, "lon": 121.00}
 }
 
-# Các đặc trưng đầu vào theo đúng thứ tự huấn luyện của mô hình XGBoost (38 đặc trưng)
-FEATURE_COLS = [
+# Các đặc trưng đầu vào theo đúng thứ tự huấn luyện của mô hình XGBoost (45 đặc trưng)
+FEATURE_COLS_45 = [
     'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'PRES', 'WAVE_H', 'WAVE_DIR', 'WAVE_P',
     'CURRENT_VEL', 'CURRENT_DIR', 'SST', 'storm_severity',
     'TMP_lag1', 'TMP_lag2', 'RH_lag1', 'RH_lag2', 'UGRD_lag1', 'UGRD_lag2', 
     'VGRD_lag1', 'VGRD_lag2', 'CAPE_lag1', 'CAPE_lag2', 'PWAT_lag1', 'PWAT_lag2', 
     'APCP_lag1', 'APCP_lag2', 'WAVE_H_lag1', 'WAVE_H_lag2', 'CURRENT_VEL_lag1', 'CURRENT_VEL_lag2',
-    'RH_rolling_mean_12h', 'TMP_rolling_mean_12h', 'hour', 'month'
+    'SST_lag1', 'SST_lag2', 'RH_rolling_mean_12h', 'TMP_rolling_mean_12h', 'hour', 'month',
+    'MPI', 'wind_shear_mag_lag1', 'wind_shear_mag_lag2', 'wind_shear_vec_lag1', 'wind_shear_vec_lag2', 'climatology_prior'
 ]
 
 # Tên tương ứng của 5 cấp độ bão khí tượng
@@ -82,6 +85,26 @@ SEVERITY_NAMES = {
 }
 
 is_fallback_active = False
+
+def load_climatology_priors():
+    hist_path = os.path.join(BASE_DIR, "data", "historical_storm_weather.csv")
+    if os.path.exists(hist_path):
+        try:
+            df_hist = pd.read_csv(hist_path, usecols=['latitude', 'longitude', 'storm_severity', 'timestamp'])
+            df_hist['timestamp'] = pd.to_datetime(df_hist['timestamp'])
+            df_hist['month'] = df_hist['timestamp'].dt.month
+            df_hist['lat_round'] = df_hist['latitude'].round(1)
+            df_hist['lon_round'] = df_hist['longitude'].round(1)
+            
+            prior_dict = df_hist.groupby(['lat_round', 'lon_round', 'month'])['storm_severity'].apply(
+                lambda s: (s > 0).mean()
+            ).to_dict()
+            return prior_dict
+        except Exception:
+            pass
+    return {}
+
+priors_dict = load_climatology_priors()
 
 def fetch_station_weather_api(lat, lon):
     """Tải dữ liệu khí quyển hiện tại và 12 giờ qua từ Open-Meteo."""
@@ -116,12 +139,14 @@ def compute_wind_components(speed_kmh, direction_deg):
     except Exception:
         return 0.0, 0.0
 
-def make_prediction_for_station(model, station_name, coords, simulated_storm_level=None):
+def make_prediction_for_station(models, station_name, coords, simulated_storm_level=None):
     """
-    Thu thập thời tiết khí quyển và hải dương để đưa ra dự đoán lượng mưa.
+    Thu thập thời tiết khí quyển và hải dương để đưa ra dự đoán lượng mưa, gió, và khí áp.
     Tự động áp dụng failover ngoại tuyến nếu API lỗi.
     """
     global is_fallback_active
+    model_rain, model_wind, model_pres = models
+    
     data_w, err_w = fetch_station_weather_api(coords['lat'], coords['lon'])
     time.sleep(0.05)
     data_m, err_m = fetch_station_marine_api(coords['lat'], coords['lon'])
@@ -275,7 +300,36 @@ def make_prediction_for_station(model, station_name, coords, simulated_storm_lev
     rh_rolling = np.mean([row_now['RH'], row_lag1['RH'], row_lag2['RH'], row_lag3['RH']])
     tmp_rolling = np.mean([row_now['TMP'], row_lag1['TMP'], row_lag2['TMP'], row_lag3['TMP']])
     
-    # 4. Tạo vector đặc trưng đầu vào (38 đặc trưng)
+    # 1. Tính toán Maximum Potential Intensity (MPI)
+    sst_c = row_now['SST'] - 273.15
+    e_s = 6.112 * np.exp(17.67 * sst_c / (sst_c + 243.5))
+    temp_diff_ratio = max(0.0, row_now['SST'] - row_now['TMP']) / max(200.0, row_now['TMP'])
+    mpi = 70.0 * np.sqrt(temp_diff_ratio * e_s)
+    
+    # 2. Tính toán Wind Shear
+    WS_now = np.sqrt(row_now['UGRD']**2 + row_now['VGRD']**2)
+    WS_lag1 = np.sqrt(row_lag1['UGRD']**2 + row_lag1['VGRD']**2)
+    WS_lag2 = np.sqrt(row_lag2['UGRD']**2 + row_lag2['VGRD']**2)
+    
+    wind_shear_mag_lag1 = np.abs(WS_now - WS_lag1)
+    wind_shear_mag_lag2 = np.abs(WS_now - WS_lag2)
+    
+    wind_shear_vec_lag1 = np.sqrt((row_now['UGRD'] - row_lag1['UGRD'])**2 + (row_now['VGRD'] - row_lag1['VGRD'])**2)
+    wind_shear_vec_lag2 = np.sqrt((row_now['UGRD'] - row_lag2['UGRD'])**2 + (row_now['VGRD'] - row_lag2['VGRD'])**2)
+    
+    # 3. Tính toán Climatological Prior
+    current_month = row_now['time'].month
+    lat_round = round(coords['lat'], 1)
+    lon_round = round(coords['lon'], 1)
+    climatology_prior = 0.2
+    if priors_dict and (lat_round, lon_round, current_month) in priors_dict:
+        climatology_prior = priors_dict[(lat_round, lon_round, current_month)]
+    else:
+        default_priors = {1: 0.05, 2: 0.02, 3: 0.02, 4: 0.05, 5: 0.1, 6: 0.2, 
+                          7: 0.4, 8: 0.5, 9: 0.6, 10: 0.5, 11: 0.3, 12: 0.1}
+        climatology_prior = default_priors.get(current_month, 0.2)
+
+    # 4. Tạo vector đặc trưng đầu vào (45 đặc trưng)
     feat_dict = {
         'latitude': coords['lat'], 'longitude': coords['lon'],
         'TMP': row_now['TMP'], 'RH': row_now['RH'], 'UGRD': row_now['UGRD'], 'VGRD': row_now['VGRD'],
@@ -292,14 +346,28 @@ def make_prediction_for_station(model, station_name, coords, simulated_storm_lev
         'APCP_lag1': row_lag1['APCP'], 'APCP_lag2': row_lag2['APCP'],
         'WAVE_H_lag1': row_lag1['WAVE_H'], 'WAVE_H_lag2': row_lag2['WAVE_H'],
         'CURRENT_VEL_lag1': row_lag1['CURRENT_VEL'], 'CURRENT_VEL_lag2': row_lag2['CURRENT_VEL'],
+        'SST_lag1': row_lag1['SST'], 'SST_lag2': row_lag2['SST'],
         'RH_rolling_mean_12h': rh_rolling, 'TMP_rolling_mean_12h': tmp_rolling,
-        'hour': row_now['time'].hour, 'month': row_now['time'].month
+        'hour': row_now['time'].hour, 'month': current_month,
+        'MPI': mpi,
+        'wind_shear_mag_lag1': wind_shear_mag_lag1, 'wind_shear_mag_lag2': wind_shear_mag_lag2,
+        'wind_shear_vec_lag1': wind_shear_vec_lag1, 'wind_shear_vec_lag2': wind_shear_vec_lag2,
+        'climatology_prior': climatology_prior
     }
     
-    df_input = pd.DataFrame([feat_dict])[FEATURE_COLS]
+    df_input = pd.DataFrame([feat_dict])[FEATURE_COLS_45]
     
-    # Dự đoán lượng mưa bằng mô hình XGBoost
-    pred_rain = float(model.predict(df_input)[0])
+    # Dự đoán bằng các mô hình đa nhiệm
+    try:
+        pred_rain = max(0.0, float(model_rain.predict(df_input)[0]))
+        pred_wind_ms = max(0.0, float(model_wind.predict(df_input)[0]))
+        pred_wind = pred_wind_ms * 3.6  # m/s -> km/h
+        pred_pres_pa = float(model_pres.predict(df_input)[0])
+        pred_pres = pred_pres_pa / 100.0  # Pa -> hPa
+    except Exception:
+        pred_rain = max(0.0, float(row_now['precipitation']))
+        pred_wind = float(row_now['wind_speed'])
+        pred_pres = float(row_now['press_hpa'])
     
     return {
         'station_name': station_name,
@@ -312,7 +380,9 @@ def make_prediction_for_station(model, station_name, coords, simulated_storm_lev
         'current_vel': row_now['CURRENT_VEL'],
         'sst': row_now['SST'] - 273.15, # Chuyển về °C để hiển thị
         'storm_severity': int(storm_severity),
-        'pred_rain': max(0.0, pred_rain)
+        'pred_rain': max(0.0, pred_rain),
+        'pred_wind': max(0.0, pred_wind),
+        'pred_pres': max(0.0, pred_pres)
     }
 
 def main():
@@ -334,22 +404,30 @@ def main():
     else:
         print(f"Trạng thái bão: [TỰ ĐỘNG - THỜI GIAN THỰC]")
 
-    # 1. Nạp mô hình XGBoost 38 đặc trưng
-    if not os.path.exists(MODEL_JSON):
-        print(f"Lỗi: Không tìm thấy tệp mô hình tại {MODEL_JSON}!")
+    # 1. Nạp mô hình XGBoost 45 đặc trưng
+    if not os.path.exists(MODEL_JSON_RAIN):
+        print(f"Lỗi: Không tìm thấy tệp mô hình tại {MODEL_JSON_RAIN}!")
         return
 
     try:
-        model = XGBRegressor()
-        model.load_model(MODEL_JSON)
+        model_rain = XGBRegressor()
+        model_rain.load_model(MODEL_JSON_RAIN)
+        
+        model_wind = XGBRegressor()
+        model_wind.load_model(MODEL_JSON_WIND)
+        
+        model_pres = XGBRegressor()
+        model_pres.load_model(MODEL_JSON_PRES)
+        
+        models = (model_rain, model_wind, model_pres)
     except Exception as e:
         print(f"Lỗi khi nạp mô hình: {e}")
         return
 
-    # 2. Dự báo cho cả 8 trạm
+    # 2. Dự báo cho cả 37 trạm
     results = []
     for name, coords in STATIONS.items():
-        res = make_prediction_for_station(model, name, coords, simulated_storm)
+        res = make_prediction_for_station(models, name, coords, simulated_storm)
         if res:
             results.append(res)
             
@@ -361,9 +439,9 @@ def main():
         print("\n[CẢNH BÁO]: Open-Meteo API bị lỗi/mất mạng. Đang sử dụng CƠ SỞ DỮ LIỆU DỰ PHÒNG NGOẠI TUYẾN.")
 
     # 3. Hiển thị bảng điều khiển dự báo hải dương khí tượng siêu đẹp
-    print("\n+-----------------+-------------------+------------+----------+------------+------------+-----------+-----------+------------+---------------+------------------+")
-    print("| Trạm Khí Tượng  | Thời Gian (UTC)   | Nhiệt Độ   | Độ Ẩm    | Tốc Độ Gió | Sóng Biển  | Hải Lưu   | Nhiệt Biển| Khí Áp     | Cấp Độ Bão    | DỰ BÁO MƯA (24h) |")
-    print("+-----------------+-------------------+------------+----------+------------+------------+-----------+-----------+------------+---------------+------------------+")
+    print("\n+-----------------+-------------------+------------+----------+-------------------+------------+-----------+-----------+-------------------+---------------+------------------+")
+    print("| Trạm Khí Tượng  | Thời Gian (UTC)   | Nhiệt Độ   | Độ Ẩm    | TỐC ĐỘ GIÓ (D.báo)| Sóng Biển  | Hải Lưu   | Nhiệt Biển| KHÍ ÁP (Dự báo)   | Cấp Độ Bão    | DỰ BÁO MƯA (24h) |")
+    print("+-----------------+-------------------+------------+----------+-------------------+------------+-----------+-----------+-------------------+---------------+------------------+")
     for r in results:
         rain_alert = "KHÔNG MƯA"
         if r['pred_rain'] > 10.0:
@@ -376,8 +454,11 @@ def main():
             rain_alert = f"MƯA PHÙN ({r['pred_rain']:.2f} mm)"
             
         severity_label = SEVERITY_NAMES[r['storm_severity']]
-        print(f"| {r['station_name']:<15} | {r['time']:<17} | {r['temp']:>7}°C | {r['rh']:>6}% | {r['wind_speed']:>6} km/h | {r['wave_h']:>8.1f}m | {r['current_vel']:>6.2f}m/s | {r['sst']:>7.1f}°C | {r['press']:>10.1f} | {severity_label:<13} | {rain_alert:<16} |")
-    print("+-----------------+-------------------+------------+----------+------------+------------+-----------+-----------+------------+---------------+------------------+")
+        wind_display = f"{r['wind_speed']:>4.1f} ({r['pred_wind']:>4.1f}) km/h"
+        pres_display = f"{r['press']:>6.1f} ({r['pred_pres']:>6.1f})"
+        
+        print(f"| {r['station_name']:<15} | {r['time']:<17} | {r['temp']:>7}°C | {r['rh']:>6}% | {wind_display:<17} | {r['wave_h']:>8.1f}m | {r['current_vel']:>6.2f}m/s | {r['sst']:>7.1f}°C | {pres_display:<17} | {severity_label:<13} | {rain_alert:<16} |")
+    print("+-----------------+-------------------+------------+----------+-------------------+------------+-----------+-----------+-------------------+---------------+------------------+")
     print("Hệ thống dự báo khí tượng hải dương hoàn thành nhiệm vụ thành công!\n")
 
 if __name__ == "__main__":

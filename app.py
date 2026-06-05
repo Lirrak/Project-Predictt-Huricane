@@ -75,9 +75,9 @@ def check_pi_status():
 
 # Thư mục gốc dự án và tệp mô hình
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_JSON_RAIN = os.path.join(BASE_DIR, "xgboost_rain_model.json")
-MODEL_JSON_WIND = os.path.join(BASE_DIR, "xgboost_wind_model.json")
-MODEL_JSON_PRES = os.path.join(BASE_DIR, "xgboost_pres_model.json")
+MODEL_JSON_RAIN = os.path.join(BASE_DIR, "models", "xgboost_rain_model.json")
+MODEL_JSON_WIND = os.path.join(BASE_DIR, "models", "xgboost_wind_model.json")
+MODEL_JSON_PRES = os.path.join(BASE_DIR, "models", "xgboost_pres_model.json")
 
 # Danh sách 37 trạm khí tượng bao gồm 32 trạm đất liền/ven biển quanh Biển Đông và 5 trạm phao ảo vùng biển sâu
 STATIONS = {
