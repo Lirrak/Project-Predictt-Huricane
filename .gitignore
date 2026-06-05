@@ -1,15 +1,16 @@
-# Ignore GRIB2 meteorological data files (heavy data)
-gfs_data/
+# Ignore GRIB2 meteorological data files and heavy datasets (local caches)
+data/historical_storm_weather.csv
+data/extracted_weather.csv
+data/engineered_features.csv
+data/temp_yearly_data/
+data/gfs_data/
 *.grib2
 *.idx
 
-# Ignore generated datasets (local caches)
-extracted_weather.csv
-engineered_features.csv
-
 # Ignore logs
+logs/*.log
+logs/*.txt
 *.log
-mlops_training_log.txt
 
 # Python caches
 __pycache__/
@@ -18,3 +19,6 @@ __pycache__/
 *.pyd
 .ipynb_checkpoints/
 .vscode/
+
+# Ignore generated HTML maps
+*.html
