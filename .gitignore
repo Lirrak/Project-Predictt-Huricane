@@ -22,3 +22,10 @@ __pycache__/
 
 # Ignore generated HTML maps
 *.html
+
+# Legacy Streamlit archive and its caches
+legacy_streamlit/
+legacy_streamlit/__pycache__/
+
+# SQLite local databases
+*.db
