@@ -102,14 +102,16 @@ def main():
             curr_vel = max(0.05, 0.028 * wind_speed + np.random.normal(0, 0.02))
             curr_dir = (wave_dir + 45.0 + np.random.normal(0, 10.0)) % 360.0
             
-            # 9. Đánh nhãn storm_severity thô dựa trên quy chuẩn vật lý khí áp và gió
-            if wind_speed >= 32.7 or pres < 96000.0:
+            # 9. Đánh nhãn storm_severity thô dựa trên quy chuẩn vật lý tốc độ gió (chuẩn Việt Nam/Biển Đông)
+            if wind_speed >= 51.0:
+                storm_sev = 5
+            elif 32.7 <= wind_speed < 51.0:
                 storm_sev = 4
-            elif 24.5 <= wind_speed < 32.7 or 96000.0 <= pres < 99000.0:
+            elif 24.5 <= wind_speed < 32.7:
                 storm_sev = 3
-            elif 17.2 <= wind_speed < 24.5 or 99000.0 <= pres < 100000.0:
+            elif 17.2 <= wind_speed < 24.5:
                 storm_sev = 2
-            elif 10.8 <= wind_speed < 17.2 or 100000.0 <= pres < 100800.0:
+            elif 10.8 <= wind_speed < 17.2:
                 storm_sev = 1
             else:
                 storm_sev = 0

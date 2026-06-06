@@ -278,17 +278,18 @@ def main():
             except Exception:
                 pass
                 
-        # Tính toán storm_severity thực tế cho tập thực tế
+        # Tính toán storm_severity thực tế cho tập thực tế theo tốc độ gió (chuẩn Việt Nam/Biển Đông)
         wind_ms = np.sqrt(row['UGRD']**2 + row['VGRD']**2)
-        pres_pa = row['PRES']
         
-        if wind_ms >= 32.7 or pres_pa < 96000.0:
+        if wind_ms >= 51.0:
+            sev = 5
+        elif 32.7 <= wind_ms < 51.0:
             sev = 4
-        elif 24.5 <= wind_ms < 32.7 or 96000.0 <= pres_pa < 99000.0:
+        elif 24.5 <= wind_ms < 32.7:
             sev = 3
-        elif 17.2 <= wind_ms < 24.5 or 99000.0 <= pres_pa < 100000.0:
+        elif 17.2 <= wind_ms < 24.5:
             sev = 2
-        elif 10.8 <= wind_ms < 17.2 or 100000.0 <= pres_pa < 100800.0:
+        elif 10.8 <= wind_ms < 17.2:
             sev = 1
         else:
             sev = 0

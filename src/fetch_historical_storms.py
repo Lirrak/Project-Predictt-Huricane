@@ -87,16 +87,18 @@ def fetch_multi_location_marine(start_date, end_date):
     return None
 
 def compute_storm_severity(wind_speed_ms, pres_pa, is_storm_period):
-    """Phân loại cấp độ bão tích hợp gió và khí áp."""
-    if is_storm_period == 0 and wind_speed_ms < 10.8 and pres_pa >= 100800.0:
+    """Phân loại cấp độ bão theo tốc độ gió (chuẩn Việt Nam/Biển Đông)."""
+    if is_storm_period == 0 and wind_speed_ms < 10.8:
         return 0
-    if wind_speed_ms >= 32.7 or pres_pa < 96000.0:
-        return 4  # Siêu bão
-    elif 24.5 <= wind_speed_ms < 32.7 or 96000.0 <= pres_pa < 99000.0:
+    if wind_speed_ms >= 51.0:
+        return 5  # Siêu bão
+    elif 32.7 <= wind_speed_ms < 51.0:
+        return 4  # Bão rất mạnh
+    elif 24.5 <= wind_speed_ms < 32.7:
         return 3  # Bão mạnh
-    elif 17.2 <= wind_speed_ms < 24.5 or 99000.0 <= pres_pa < 100000.0:
+    elif 17.2 <= wind_speed_ms < 24.5:
         return 2  # Bão thường
-    elif 10.8 <= wind_speed_ms < 17.2 or 100000.0 <= pres_pa < 100800.0:
+    elif 10.8 <= wind_speed_ms < 17.2:
         return 1  # Áp thấp nhiệt đới
     else:
         return 1 if is_storm_period == 1 else 0

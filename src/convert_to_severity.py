@@ -16,29 +16,31 @@ HISTORICAL_CSV = os.path.join(BASE_DIR, "data", "historical_storm_weather.csv")
 
 def calculate_storm_severity(row):
     """
-    Phân loại cấp độ bão nhiệt đới dựa trên tốc độ gió (m/s) và khí áp (Pa):
-    Cấp 0: Bình thường (Normal) - Gió dưới cấp 6 (m/s < 10.8) và khí áp ổn định.
-    Cấp 1: Áp thấp nhiệt đới (Tropical Depression) - Gió cấp 6-7 (10.8 - 17.1 m/s) hoặc khí áp 1000 - 1008 hPa.
-    Cấp 2: Bão nhiệt đới thường (Tropical Storm) - Gió cấp 8-9 (17.2 - 24.4 m/s) hoặc khí áp 990 - 1000 hPa.
-    Cấp 3: Bão mạnh / Cuồng phong (Typhoon) - Gió cấp 10-11 (24.5 - 32.6 m/s) hoặc khí áp 960 - 990 hPa.
-    Cấp 4: Siêu bão (Super Typhoon) - Gió từ cấp 12 trở lên (>= 32.7 m/s) hoặc khí áp dưới 960 hPa.
+    Phân loại cấp độ bão nhiệt đới dựa trên tốc độ gió (m/s) theo quy chuẩn Việt Nam/Biển Đông:
+    Cấp 0: Bình thường / Vùng áp thấp yếu - Gió dưới cấp 6 (< 10.8 m/s).
+    Cấp 1: Áp thấp nhiệt đới - Gió cấp 6-7 (10.8 - 17.1 m/s).
+    Cấp 2: Bão / Tropical storm - Gió cấp 8-9 (17.2 - 24.4 m/s).
+    Cấp 3: Bão mạnh - Gió cấp 10-11 (24.5 - 32.6 m/s).
+    Cấp 4: Bão rất mạnh - Gió cấp 12-15 (32.7 - 50.9 m/s).
+    Cấp 5: Siêu bão - Gió cấp 16 trở lên (>= 51.0 m/s).
     """
     u = row['UGRD']
     v = row['VGRD']
-    pres = row['PRES']
     is_storm_period = row.get('is_storm', 0)
     
     # Tính tốc độ gió (m/s)
     wind_speed = np.sqrt(u**2 + v**2)
     
     # Phân cấp
-    if wind_speed >= 32.7 or pres < 96000.0:
-        return 4  # Siêu bão
-    elif 24.5 <= wind_speed < 32.7 or 96000.0 <= pres < 99000.0:
+    if wind_speed >= 51.0:
+        return 5  # Siêu bão
+    elif 32.7 <= wind_speed < 51.0:
+        return 4  # Bão rất mạnh
+    elif 24.5 <= wind_speed < 32.7:
         return 3  # Bão mạnh
-    elif 17.2 <= wind_speed < 24.5 or 99000.0 <= pres < 100000.0:
-        return 2  # Bão nhiệt đới thường
-    elif 10.8 <= wind_speed < 17.2 or 100000.0 <= pres < 100800.0:
+    elif 17.2 <= wind_speed < 24.5:
+        return 2  # Bão thường / Tropical storm
+    elif 10.8 <= wind_speed < 17.2:
         return 1  # Áp thấp nhiệt đới
     else:
         # Nếu trong thời kỳ bão nhưng ở vùng rìa gió nhẹ
@@ -60,8 +62,9 @@ def main():
             0: "Cấp 0: Bình thường (Normal)",
             1: "Cấp 1: Áp thấp nhiệt đới (Tropical Depression)",
             2: "Cấp 2: Bão thường (Tropical Storm)",
-            3: "Cấp 3: Bão mạnh (Typhoon)",
-            4: "Cấp 4: Siêu bão (Super Typhoon)"
+            3: "Cấp 3: Bão mạnh (Strong Storm)",
+            4: "Cấp 4: Bão rất mạnh (Very Strong Storm)",
+            5: "Cấp 5: Siêu bão (Super Typhoon)"
         }
         for level, count in df_hist['storm_severity'].value_counts().sort_index().items():
             print(f"  - {severity_names[level]:<50}: {count} mẫu")

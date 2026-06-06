@@ -346,17 +346,18 @@ def main():
                                 else:
                                     rec['APCP'] = 0.0
                             
-                            # Tính storm_severity dựa trên UGRD, VGRD và PRES (áp suất)
+                            # Tính storm_severity dựa trên UGRD và VGRD theo tốc độ gió (chuẩn Việt Nam/Biển Đông)
                             wind_speed_ms = np.sqrt(rec['UGRD']**2 + rec['VGRD']**2)
-                            pres_pa = rec['PRES']
                             
-                            if wind_speed_ms >= 32.7 or pres_pa < 96000.0:
-                                rec['storm_severity'] = 4  # Siêu bão
-                            elif 24.5 <= wind_speed_ms < 32.7 or 96000.0 <= pres_pa < 99000.0:
+                            if wind_speed_ms >= 51.0:
+                                rec['storm_severity'] = 5  # Siêu bão
+                            elif 32.7 <= wind_speed_ms < 51.0:
+                                rec['storm_severity'] = 4  # Bão rất mạnh
+                            elif 24.5 <= wind_speed_ms < 32.7:
                                 rec['storm_severity'] = 3  # Bão mạnh
-                            elif 17.2 <= wind_speed_ms < 24.5 or 99000.0 <= pres_pa < 100000.0:
-                                rec['storm_severity'] = 2  # Bão nhiệt đới thường
-                            elif 10.8 <= wind_speed_ms < 17.2 or 100000.0 <= pres_pa < 100800.0:
+                            elif 17.2 <= wind_speed_ms < 24.5:
+                                rec['storm_severity'] = 2  # Bão thường / Tropical storm
+                            elif 10.8 <= wind_speed_ms < 17.2:
                                 rec['storm_severity'] = 1  # Áp thấp nhiệt đới
                             else:
                                 rec['storm_severity'] = 0

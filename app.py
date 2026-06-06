@@ -128,7 +128,8 @@ SEVERITY_NAMES = {
     1: "Áp thấp n.đới",
     2: "Bão thường",
     3: "Bão mạnh",
-    4: "Siêu bão"
+    4: "Bão rất mạnh",
+    5: "Siêu bão"
 }
 
 SEVERITY_COLORS = {
@@ -136,7 +137,8 @@ SEVERITY_COLORS = {
     1: "#3498db",  # Xanh dương
     2: "#f1c40f",  # Vàng
     3: "#e67e22",  # Cam
-    4: "#e74c3c"   # Đỏ
+    4: "#e74c3c",  # Đỏ
+    5: "#9b59b6"   # Tím (Siêu bão)
 }
 
 # --- NẠP MÔ HÌNH XGBOOST ĐA NHIỆM ---
@@ -339,14 +341,15 @@ def predict_station(models, station_name, coords, station_w, station_m, simulate
         storm_severity = int(simulated_storm_level)
     else:
         wind_speed_ms = row_now['wind_speed'] / 3.6
-        pres_pa = row_now['PRES']
-        if wind_speed_ms >= 32.7 or pres_pa < 96000.0:
+        if wind_speed_ms >= 51.0:
+            storm_severity = 5
+        elif 32.7 <= wind_speed_ms < 51.0:
             storm_severity = 4
-        elif 24.5 <= wind_speed_ms < 32.7 or 96000.0 <= pres_pa < 99000.0:
+        elif 24.5 <= wind_speed_ms < 32.7:
             storm_severity = 3
-        elif 17.2 <= wind_speed_ms < 24.5 or 99000.0 <= pres_pa < 100000.0:
+        elif 17.2 <= wind_speed_ms < 24.5:
             storm_severity = 2
-        elif 10.8 <= wind_speed_ms < 17.2 or 100000.0 <= pres_pa < 100800.0:
+        elif 10.8 <= wind_speed_ms < 17.2:
             storm_severity = 1
         else:
             storm_severity = 0
@@ -528,15 +531,15 @@ simulated_storm = None
 if storm_mode == "Giả lập Cấp độ Bão":
     simulated_storm = st.sidebar.slider(
         "Cấp độ Bão giả lập:",
-        min_value=0, max_value=4, value=1, format="%d",
-        help="0: Thường, 1: Áp thấp, 2: Bão thường, 3: Bão mạnh, 4: Siêu bão"
+        min_value=0, max_value=5, value=1, format="%d",
+        help="0: Thường, 1: Áp thấp, 2: Bão thường, 3: Bão mạnh, 4: Bão rất mạnh, 5: Siêu bão"
     )
     st.sidebar.info(f"Đang giả lập: **{SEVERITY_NAMES[simulated_storm].upper()}**")
 
 # Bộ lọc cấp bão dự báo
 min_severity_filter = st.sidebar.slider(
     "Bộ lọc cấp bão dự báo (Cấp >=):",
-    min_value=0, max_value=4, value=0, format="%d",
+    min_value=0, max_value=5, value=0, format="%d",
     help="Chỉ hiển thị các trạm đang báo bão đạt cấp bằng hoặc cao hơn mức được chọn."
 )
 
@@ -668,7 +671,7 @@ with tab_monitor:
         margin={"r":0,"t":10,"l":0,"b":0},
         coloraxis_colorbar=dict(
             title="Cấp Bão Dự Báo",
-            tickvals=[0, 1, 2, 3, 4],
+            tickvals=[0, 1, 2, 3, 4, 5],
             ticktext=list(SEVERITY_NAMES.values())
         ),
         legend=dict(x=0, y=1, bgcolor="rgba(255,255,255,0.7)")
@@ -911,12 +914,13 @@ with tab_audit:
     
     st.markdown("""
     ### 🌀 Thống Kê Phân Bố Lớp Bão Thực Tế Trên Tập Test
-    Tập kiểm thử độc lập ngẫu nhiên (20% từ 224,391 mẫu) ghi nhận tổng cộng **44,879 mẫu**:
-    *   **Cấp 0 (Bình thường):** 9,607 mẫu (21.41%)
-    *   **Cấp 1 (Áp thấp nhiệt đới):** 34,309 mẫu (76.45%)
-    *   **Cấp 2 (Bão thường):** 937 mẫu (2.09%)
-    *   **Cấp 3 (Bão mạnh):** 26 mẫu (0.06%)
-    *   **Cấp 4 (Siêu bão):** 0 mẫu (0.00%)
+    Tập kiểm thử độc lập ngẫu nhiên (20% từ 224,391 mẫu) phân bố theo quy chuẩn phân cấp bão mới (chuẩn Việt Nam/Biển Đông):
+    *   **Cấp 0 (Bình thường / Vùng áp thấp yếu)**
+    *   **Cấp 1 (Áp thấp nhiệt đới)**
+    *   **Cấp 2 (Bão thường / Tropical storm)**
+    *   **Cấp 3 (Bão mạnh)**
+    *   **Cấp 4 (Bão rất mạnh)**
+    *   **Cấp 5 (Siêu bão)**
     
     ### 🔬 Kiểm Chứng Tính Hợp Lý Vật Lý (Physical Consistency Check)
     1.  **Sự liên kết Sóng - Gió (Wind-Wave Coupling):** Hệ số tương quan đạt **0.9009**. Khi tốc độ gió tăng, độ cao sóng `WAVE_H` tăng đồng biến phi tuyến chính xác theo cơ chế truyền động của phổ Pierson-Moskowitz.

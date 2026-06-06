@@ -75,13 +75,14 @@ FEATURE_COLS_45 = [
     'MPI', 'wind_shear_mag_lag1', 'wind_shear_mag_lag2', 'wind_shear_vec_lag1', 'wind_shear_vec_lag2', 'climatology_prior'
 ]
 
-# Tên tương ứng của 5 cấp độ bão khí tượng
+# Tên tương ứng của 6 cấp độ bão khí tượng
 SEVERITY_NAMES = {
     0: "Bình thường",
     1: "Áp thấp n.đới",
     2: "Bão thường",
     3: "Bão mạnh",
-    4: "Siêu bão"
+    4: "Bão rất mạnh",
+    5: "Siêu bão"
 }
 
 is_fallback_active = False
@@ -270,14 +271,15 @@ def make_prediction_for_station(models, station_name, coords, station_w, station
         storm_severity = int(simulated_storm_level)
     else:
         wind_speed_ms = row_now['wind_speed'] / 3.6
-        pres_pa = row_now['PRES']
-        if wind_speed_ms >= 32.7 or pres_pa < 96000.0:
-            storm_severity = 4  # Siêu bão
-        elif 24.5 <= wind_speed_ms < 32.7 or 96000.0 <= pres_pa < 99000.0:
+        if wind_speed_ms >= 51.0:
+            storm_severity = 5  # Siêu bão
+        elif 32.7 <= wind_speed_ms < 51.0:
+            storm_severity = 4  # Bão rất mạnh
+        elif 24.5 <= wind_speed_ms < 32.7:
             storm_severity = 3  # Bão mạnh
-        elif 17.2 <= wind_speed_ms < 24.5 or 99000.0 <= pres_pa < 100000.0:
+        elif 17.2 <= wind_speed_ms < 24.5:
             storm_severity = 2  # Bão thường
-        elif 10.8 <= wind_speed_ms < 17.2 or 100000.0 <= pres_pa < 100800.0:
+        elif 10.8 <= wind_speed_ms < 17.2:
             storm_severity = 1  # Áp thấp nhiệt đới
         else:
             storm_severity = 0  # Bình thường
@@ -389,8 +391,8 @@ def make_prediction_for_station(models, station_name, coords, station_w, station
 def main():
     global is_fallback_active
     parser = argparse.ArgumentParser(description="Raspberry Pi Lightweight Weather & Oceanography Predictor using XGBoost")
-    parser.add_argument("--storm", type=int, choices=[0, 1, 2, 3, 4], nargs='?', const=1, 
-                        help="Giả lập bão (0:Bình thường, 1:Áp thấp, 2:Bão thường, 3:Bão mạnh, 4:Siêu bão)")
+    parser.add_argument("--storm", type=int, choices=[0, 1, 2, 3, 4, 5], nargs='?', const=1, 
+                        help="Giả lập bão (0:Bình thường, 1:Áp thấp, 2:Bão thường, 3:Bão mạnh, 4:Bão rất mạnh, 5:Siêu bão)")
     args = parser.parse_args()
 
     print("\n==========================================================================================")

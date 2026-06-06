@@ -17,15 +17,17 @@ MODEL_JSON_RAIN = os.path.join(BASE_DIR, "models", "xgboost_rain_model.json")
 MODEL_JSON_WIND = os.path.join(BASE_DIR, "models", "xgboost_wind_model.json")
 MODEL_JSON_PRES = os.path.join(BASE_DIR, "models", "xgboost_pres_model.json")
 
-def calculate_severity(wind_ms, pres_pa):
-    """Phân cấp độ bão vật lý."""
-    if wind_ms >= 32.7 or pres_pa < 96000.0:
+def calculate_severity(wind_ms, pres_pa=None):
+    """Phân cấp độ bão vật lý theo tốc độ gió (chuẩn Việt Nam/Biển Đông)."""
+    if wind_ms >= 51.0:
+        return 5
+    elif 32.7 <= wind_ms < 51.0:
         return 4
-    elif 24.5 <= wind_ms < 32.7 or 96000.0 <= pres_pa < 99000.0:
+    elif 24.5 <= wind_ms < 32.7:
         return 3
-    elif 17.2 <= wind_ms < 24.5 or 99000.0 <= pres_pa < 100000.0:
+    elif 17.2 <= wind_ms < 24.5:
         return 2
-    elif 10.8 <= wind_ms < 17.2 or 100000.0 <= pres_pa < 100800.0:
+    elif 10.8 <= wind_ms < 17.2:
         return 1
     return 0
 

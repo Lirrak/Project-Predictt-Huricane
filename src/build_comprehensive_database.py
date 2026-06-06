@@ -209,21 +209,24 @@ def process_reconstruction_vectorized(df):
     mask_sst = (df['SST'] == df['TMP']) | (df['SST'] == 0.0)
     df['SST'] = np.where(mask_sst, sst_calc, df['SST'])
     
-    # 7. storm_severity
+    # 7. storm_severity (chuẩn Việt Nam/Biển Đông theo tốc độ gió)
     sev = np.zeros(len(df), dtype=int)
     
-    # Cấp 1: Áp thấp
-    mask_1 = ((wind_speed >= 10.8) & (wind_speed < 17.2)) | ((df['PRES'] >= 100000.0) & (df['PRES'] < 100800.0))
+    # Cấp 1: Áp thấp nhiệt đới
+    mask_1 = (wind_speed >= 10.8) & (wind_speed < 17.2)
     sev[mask_1] = 1
     # Cấp 2: Bão thường
-    mask_2 = ((wind_speed >= 17.2) & (wind_speed < 24.5)) | ((df['PRES'] >= 99000.0) & (df['PRES'] < 100000.0))
+    mask_2 = (wind_speed >= 17.2) & (wind_speed < 24.5)
     sev[mask_2] = 2
     # Cấp 3: Bão mạnh
-    mask_3 = ((wind_speed >= 24.5) & (wind_speed < 32.7)) | ((df['PRES'] >= 96000.0) & (df['PRES'] < 99000.0))
+    mask_3 = (wind_speed >= 24.5) & (wind_speed < 32.7)
     sev[mask_3] = 3
-    # Cấp 4: Siêu bão
-    mask_4 = (wind_speed >= 32.7) | (df['PRES'] < 96000.0)
+    # Cấp 4: Bão rất mạnh
+    mask_4 = (wind_speed >= 32.7) & (wind_speed < 51.0)
     sev[mask_4] = 4
+    # Cấp 5: Siêu bão
+    mask_5 = (wind_speed >= 51.0)
+    sev[mask_5] = 5
     
     # Áp thấp vùng rìa bão
     mask_rest = (sev == 0) & (is_storm == 1)
