@@ -160,7 +160,143 @@ sudo systemctl start hurricane-backend.service hurricane-frontend.service
 
 ---
 
-## 📈 6. Hướng Phát Triển Tương Lai (Future Development)
+## 🌐 6. Hướng Dẫn Expose Ứng Dụng Ra Internet Bằng Cloudflare Tunnel & Nginx Reverse Proxy
+
+Để truy cập Fullstack Dashboard (bao gồm cả giao diện Frontend Next.js và dữ liệu từ FastAPI Backend) từ ngoài Internet một cách **hoàn toàn miễn phí, an toàn (HTTPS), không cần mở port router hay mua IP tĩnh**, hệ thống được thiết lập một cổng Reverse Proxy Nginx trung gian, tích hợp dịch vụ Cloudflare Quick Tunnel (`tryscloudflare.com`).
+
+### Kiến trúc tổng quát qua Cloudflare Tunnel:
+```text
+[Người dùng Internet] (HTTPS)
+       │
+       ▼ (Link ngẫu nhiên tryscloudflare.com)
+┌──────────────┐
+│  cloudflared │ (Nhận traffic từ Cloudflare Network)
+└──────┬───────┘
+       │ (localhost:8080)
+       ▼
+┌──────────────┐
+│  Nginx Proxy │ (Phân luồng thông minh dựa trên Request Path)
+└──────┬───────┘
+       ├───────► /api/*  ──────► FastAPI Backend (Port 8000)
+       └───────► /*      ──────► Next.js Frontend (Port 3000)
+```
+
+### Bước 6.1: Cấu hình Frontend sử dụng Dynamic API URL
+Để Frontend Next.js có thể tự động nhận biết và gửi các yêu cầu API đến đúng domain Cloudflare ngẫu nhiên mà không cần sửa code mỗi khi Pi restart, hãy đổi `API_BASE_URL` thành đường dẫn tương đối.
+
+Mở file `frontend/src/app/page.tsx` và sửa lại ở dòng 42:
+* **Trước:** `const API_BASE_URL = "http://localhost:8000";`
+* **Sau:** `const API_BASE_URL = "";`
+
+*Biên dịch lại Frontend Next.js:*
+```bash
+cd /home/lirrak/Project-Predictt-Huricane/frontend
+NODE_OPTIONS="--max-old-space-size=512" npm run build
+```
+
+### Bước 6.2: Cấu hình Nginx Reverse Proxy (Gom luồng về Port 8080)
+1. Cài đặt Nginx:
+   ```bash
+   sudo apt update && sudo apt install nginx -y
+   ```
+2. Tạo file cấu hình proxy tại `/etc/nginx/sites-available/storm-proxy`:
+   ```bash
+   sudo nano /etc/nginx/sites-available/storm-proxy
+   ```
+3. Dán cấu hình phân luồng thông minh dưới đây vào:
+   ```nginx
+   server {
+       listen 8080;
+       server_name _;
+
+       # Phân tuyến API về FastAPI Backend
+       location /api/ {
+           proxy_pass http://localhost:8000;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+
+       # Phân tuyến các trang khác về Next.js Frontend
+       location / {
+           proxy_pass http://localhost:3000;
+           proxy_http_version 1.1;
+           proxy_set_header Upgrade $http_upgrade;
+           proxy_set_header Connection 'upgrade';
+           proxy_set_header Host $host;
+           proxy_cache_bypass $http_upgrade;
+           proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+       }
+   }
+   ```
+4. Kích hoạt và restart lại Nginx:
+   ```bash
+   sudo ln -sf /etc/nginx/sites-available/storm-proxy /etc/nginx/sites-enabled/
+   sudo rm -f /etc/nginx/sites-enabled/default
+   sudo nginx -t
+   sudo systemctl restart nginx
+   sudo systemctl enable nginx
+   ```
+
+### Bước 6.3: Tải cloudflared và cài đặt Systemd Service cho Quick Tunnel
+1. Kiểm tra kiến trúc OS của Pi để chọn bản cài phù hợp:
+   ```bash
+   uname -m
+   ```
+2. Tải và cài đặt file `.deb` (Thay thế link `arm64` thành `arm` nếu Pi OS của bạn chạy bản 32-bit):
+   ```bash
+   # Cho bản 64-bit (arm64 / aarch64):
+   curl -L -o cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.deb
+   sudo dpkg -i cloudflared.deb
+   ```
+3. Tạo file Systemd service cho Quick Tunnel tự khởi động cùng hệ thống:
+   ```bash
+   sudo nano /etc/systemd/system/cloudflared-quick.service
+   ```
+   Dán nội dung cấu hình này vào:
+   ```ini
+   [Unit]
+   Description=Cloudflare Quick Tunnel (tryscloudflare.com)
+   After=network.target nginx.service hurricane-backend.service hurricane-frontend.service
+   Requires=nginx.service
+
+   [Service]
+   Type=simple
+   User=root
+   ExecStart=/usr/bin/cloudflared tunnel --url http://localhost:8080
+   Restart=always
+   RestartSec=10
+   StandardOutput=syslog
+   StandardError=syslog
+   SyslogIdentifier=cloudflared-quick
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+   *(Chú ý: Hãy chạy lệnh `which cloudflared` trên Pi của bạn, nếu đường dẫn trả về là `/usr/local/bin/cloudflared`, vui lòng sửa lại đường dẫn trong dòng `ExecStart` thành `/usr/local/bin/cloudflared`).*
+4. Kích hoạt và khởi chạy dịch vụ:
+   ```bash
+   sudo systemctl daemon-reload
+   sudo systemctl enable cloudflared-quick.service
+   sudo systemctl start cloudflared-quick.service
+   ```
+
+### Bước 6.4: Lấy link truy cập ngẫu nhiên
+Mỗi khi Raspberry Pi khởi động lại, dịch vụ sẽ tự động xin cấp một domain ngẫu nhiên mới từ Cloudflare. Bạn có thể lấy link này bất kỳ lúc nào bằng lệnh:
+```bash
+sudo journalctl -u cloudflared-quick -n 50 --no-pager | grep tryscloudflare.com
+```
+
+---
+
+## 📈 7. Hướng Phát Triển Tương Lai (Future Development)
 
 Để hệ thống ngày càng hoàn thiện và mang tính thực tế cao hơn trong nghiên cứu khí quyển học, các định hướng phát triển sau được đề xuất:
 
@@ -172,5 +308,3 @@ sudo systemctl start hurricane-backend.service hurricane-frontend.service
     *   Các node này sẽ định kỳ gửi dữ liệu đo đạc thực địa trực tiếp về cổng API máy chủ thông qua giao thức siêu nhẹ **MQTT** hoặc **HTTP POST**, làm giàu thêm dữ liệu huấn luyện cho mô hình.
 3.  **Tích hợp bản đồ ngoại tuyến (Offline GIS Map):**
     *   Để chuẩn bị cho kịch bản mất kết nối mạng Internet hoàn toàn trong thiên tai cực đoan, hệ thống cần tích hợp các gói bản đồ vector ngoại tuyến thông qua công nghệ Mapbox Offline hoặc Leaflet lưu trữ ngay trên thẻ nhớ của Pi.
-4.  **Thiết lập Reverse Proxy và Bảo mật SSL:**
-    *   Cấu hình thêm **Nginx Reverse Proxy** và mã hóa SSL Let's Encrypt ở cổng 80/443 để cho phép truy cập hệ thống từ internet công cộng một cách an toàn nhất nếu có nhu cầu chia sẻ dữ liệu với cộng đồng.
