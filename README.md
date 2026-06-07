@@ -19,7 +19,6 @@ Trong quá trình triển khai hệ thống trên Raspberry Pi, các giải phá
 2.  **Khắc phục giới hạn RAM 1GB bằng Swap 2GB:** Cấu hình thành công phân vùng bộ nhớ ảo (Swap file) 2GB hoạt động song song với ZRAM mặc định của Pi, nâng tổng dung lượng bộ nhớ ảo lên gần 3GB, giải quyết triệt để lỗi Out-Of-Memory (OOM) khi cài đặt thư viện và biên dịch (build) Next.js.
 3.  **Khắc phục lỗi bộ nhớ đệm `pip` trên RAM (`tmpfs`):** Hệ điều hành Raspberry Pi OS giới hạn thư mục tạm `/tmp` trên RAM chỉ có 453MB, gây ra lỗi `No space left on device` khi cài đặt các gói thư viện Python lớn. Vấn đề đã được khắc phục triệt để bằng cách chuyển hướng thư mục tạm của `pip` về thẻ nhớ chính (`export TMPDIR=~/pip_tmp`).
 4.  **Tái cấu hình Bản đồ GIS 2D độ chính xác cao (Vector Map):** Thiết kế lại sơ đồ SVG bản đồ tương tác tỷ lệ 500x500. Bổ sung chi tiết mảng lục địa Đông Nam Á, đảo Hải Nam, đảo Đài Loan, quần đảo Philippines, đảo Borneo và hai quần đảo thiêng liêng **Hoàng Sa (VN)**, **Trường Sa (VN)** kèm nhãn chủ quyền và các vector chỉ hướng hải lưu vật lý.
-5.  **Tinh giản hóa hệ thống (Tối ưu hóa hiệu năng):** Loại bỏ hoàn toàn các mô-đun không cốt lõi bao gồm: hệ thống Đăng nhập/Đăng ký tài khoản, Đăng ký thông báo qua Email/Telegram, và Widget kiểm tra trạng thái thiết bị ngoại vi. Việc này giúp giảm tải hơn 40% lượng truy vấn API không cần thiết, tối giản hóa giao diện và tăng tốc độ kết xuất dữ liệu của trình duyệt máy khách.
 
 ---
 
@@ -299,7 +298,7 @@ NODE_OPTIONS="--max-old-space-size=512" npm run build
 ### Bước 6.4: Lấy link truy cập ngẫu nhiên
 Mỗi khi Raspberry Pi khởi động lại, dịch vụ sẽ tự động xin cấp một domain ngẫu nhiên mới từ Cloudflare. Bạn có thể lấy link này bất kỳ lúc nào bằng lệnh:
 ```bash
-sudo journalctl -u cloudflared-quick -n 50 --no-pager | grep tryscloudflare.com
+sudo journalctl -u cloudflared-quick -n 50 --no-pager
 ```
 
 ---
