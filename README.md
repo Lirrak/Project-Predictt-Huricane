@@ -290,7 +290,7 @@ NODE_OPTIONS="--max-old-space-size=512" npm run build
 ### Bước 6.4: Lấy link truy cập ngẫu nhiên
 Mỗi khi Raspberry Pi khởi động lại, dịch vụ sẽ tự động xin cấp một domain ngẫu nhiên mới từ Cloudflare. Bạn có thể lấy link này bất kỳ lúc nào bằng lệnh:
 ```bash
-sudo journalctl -u cloudflared-quick -n 50 --no-pager | grep tryscloudflare.com
+sudo journalctl -u cloudflared-quick -n 50 --no-pager
 ```
 
 ---
