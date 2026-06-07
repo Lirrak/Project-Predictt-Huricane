@@ -896,33 +896,98 @@ export default function Home() {
                   </div>
 
                   {/* Core physical metrics */}
-                  <div className="grid grid-cols-2 gap-3 mt-1">
-                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 flex items-center gap-3">
-                      <div className="bg-orange-500/10 p-2 rounded text-orange-400"><Thermometer className="w-4 h-4" /></div>
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1 mb-0.5 flex items-center gap-1.5 border-b border-slate-800/40 pb-1">
+                    <span>🌤️ THÔNG SỐ KHÍ TƯỢNG (METEOROLOGY)</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-orange-500/10 p-1.5 rounded text-orange-400"><Thermometer className="w-3.5 h-3.5" /></div>
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-slate-500">Nhiệt độ</span>
-                        <span className="text-sm font-bold text-slate-200">{selectedStation.temp}°C</span>
+                        <span className="text-[9px] text-slate-500">Nhiệt độ</span>
+                        <span className="text-xs font-bold text-slate-200">{(selectedStation.temp ?? 0)}°C</span>
                       </div>
                     </div>
-                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 flex items-center gap-3">
-                      <div className="bg-red-500/10 p-2 rounded text-red-400"><Wind className="w-4 h-4" /></div>
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-blue-500/10 p-1.5 rounded text-blue-400"><Droplets className="w-3.5 h-3.5" /></div>
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-slate-500">Tốc độ Gió</span>
-                        <span className="text-sm font-bold text-slate-200">{selectedStation.wind_speed} km/h</span>
+                        <span className="text-[9px] text-slate-500">Độ ẩm</span>
+                        <span className="text-xs font-bold text-slate-200">{(selectedStation.rh ?? 0)}%</span>
                       </div>
                     </div>
-                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 flex items-center gap-3">
-                      <div className="bg-emerald-500/10 p-2 rounded text-emerald-400"><TrendingUp className="w-4 h-4" /></div>
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-red-500/10 p-1.5 rounded text-red-400"><Wind className="w-3.5 h-3.5" /></div>
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-slate-500">Khí áp</span>
-                        <span className="text-sm font-bold text-slate-200">{selectedStation.press} hPa</span>
+                        <span className="text-[9px] text-slate-500">Tốc độ Gió</span>
+                        <span className="text-xs font-bold text-slate-200">{(selectedStation.wind_speed ?? 0)} km/h</span>
                       </div>
                     </div>
-                    <div className="bg-slate-900/60 p-3 rounded-lg border border-slate-800 flex items-center gap-3">
-                      <div className="bg-cyan-500/10 p-2 rounded text-cyan-400"><Waves className="w-4 h-4" /></div>
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-teal-500/10 p-1.5 rounded text-teal-400"><Compass className="w-3.5 h-3.5" /></div>
                       <div className="flex flex-col">
-                        <span className="text-[10px] text-slate-500">Nhiệt biển SST</span>
-                        <span className="text-sm font-bold text-slate-200">{selectedStation.sst.toFixed(1)}°C</span>
+                        <span className="text-[9px] text-slate-500">Hướng Gió</span>
+                        <span className="text-xs font-bold text-slate-200">{(selectedStation.wind_dir ?? 0)}°</span>
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-emerald-500/10 p-1.5 rounded text-emerald-400"><Activity className="w-3.5 h-3.5" /></div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-500">Khí áp</span>
+                        <span className="text-xs font-bold text-slate-200">{(selectedStation.press ?? 0)} hPa</span>
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-amber-500/10 p-1.5 rounded text-amber-400"><AlertTriangle className="w-3.5 h-3.5" /></div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-500">Xác suất Bão</span>
+                        <span className="text-xs font-bold text-slate-200">{((selectedStation.climatology_prior ?? 0) * 100).toFixed(0)}%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-2.5 mb-0.5 flex items-center gap-1.5 border-b border-slate-800/40 pb-1">
+                    <span>🌊 THÔNG SỐ HẢI VĂN (OCEANOGRAPHY)</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mt-1">
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-cyan-500/10 p-1.5 rounded text-cyan-400"><Waves className="w-3.5 h-3.5" /></div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-500">Nhiệt biển SST</span>
+                        <span className="text-xs font-bold text-slate-200">{(selectedStation.sst ?? 0).toFixed(1)}°C</span>
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-indigo-500/10 p-1.5 rounded text-indigo-400"><Waves className="w-3.5 h-3.5" /></div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-500">Chiều cao Sóng</span>
+                        <span className="text-xs font-bold text-slate-200">{(selectedStation.wave_h ?? 0).toFixed(1)} m</span>
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-violet-500/10 p-1.5 rounded text-violet-400"><Activity className="w-3.5 h-3.5" /></div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-500">Chu kỳ Sóng</span>
+                        <span className="text-xs font-bold text-slate-200">{(selectedStation.wave_p ?? 0).toFixed(1)} s</span>
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-pink-500/10 p-1.5 rounded text-pink-400"><Compass className="w-3.5 h-3.5" /></div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-500">Hướng Sóng</span>
+                        <span className="text-xs font-bold text-slate-200">{(selectedStation.wave_direction ?? 0)}°</span>
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-emerald-500/10 p-1.5 rounded text-emerald-400"><TrendingUp className="w-3.5 h-3.5" /></div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-500">Dòng chảy</span>
+                        <span className="text-xs font-bold text-slate-200">{(selectedStation.current_vel ?? 0).toFixed(2)} m/s</span>
+                      </div>
+                    </div>
+                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-blue-500/10 p-1.5 rounded text-blue-400"><Compass className="w-3.5 h-3.5" /></div>
+                      <div className="flex flex-col">
+                        <span className="text-[9px] text-slate-500">Hướng Dòng</span>
+                        <span className="text-xs font-bold text-slate-200">{(selectedStation.current_dir ?? 0)}°</span>
                       </div>
                     </div>
                   </div>
