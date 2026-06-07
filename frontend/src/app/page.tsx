@@ -15,10 +15,6 @@ import {
   TrendingUp, 
   Database,
   Star,
-  User as UserIcon,
-  LogIn,
-  LogOut,
-  X,
   AlertTriangle,
   CheckCircle
 } from "lucide-react";
@@ -31,9 +27,6 @@ import {
   Tooltip,
   ResponsiveContainer
 } from "recharts";
-
-// Configuration
-const API_BASE_URL = "";
 
 // Constants for Severity Colors & Names
 const SEVERITY_NAMES: Record<number, string> = {
@@ -159,135 +152,32 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [apiLatency, setApiLatency] = useState<number | null>(null);
 
-  // Authentication & Watchlist States
-  const [user, setUser] = useState<any | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  // Local Storage Watchlist State (No Account needed)
   const [watchlist, setWatchlist] = useState<string[]>([]);
-  
-  // Auth Modal States
-  const [authModal, setAuthModal] = useState<{ isOpen: boolean, tab: "login" | "register" }>({ isOpen: false, tab: "login" });
-  const [usernameInput, setUsernameInput] = useState("");
-  const [passwordInput, setPasswordInput] = useState("");
-  const [authError, setAuthError] = useState<string | null>(null);
 
-  // Load Saved Auth Tokens on Init
+  // Load Saved Watchlist from LocalStorage on Init
   useEffect(() => {
-    const savedToken = localStorage.getItem("jwt_token");
-    if (savedToken) {
-      setToken(savedToken);
-      fetchUserProfile(savedToken);
+    if (typeof window !== "undefined") {
+      const savedWatchlist = localStorage.getItem("local_watchlist");
+      if (savedWatchlist) {
+        try {
+          setWatchlist(JSON.parse(savedWatchlist));
+        } catch (e) {
+          console.error("Error loading watchlist:", e);
+        }
+      }
     }
   }, []);
 
-  const fetchUserProfile = async (jwtToken: string) => {
-    try {
-      const res = await fetch(`/api/auth/me`, {
-        headers: { "Authorization": `Bearer ${jwtToken}` }
-      });
-      if (res.ok) {
-        const uData = await res.json();
-        setUser(uData);
-        fetchWatchlist(jwtToken);
-      } else {
-        handleLogout();
-      }
-    } catch (e) {
-      setUser({ username: "Guest User" });
+  const toggleWatchlist = (stationName: string) => {
+    let updatedWatchlist: string[];
+    if (watchlist.includes(stationName)) {
+      updatedWatchlist = watchlist.filter(name => name !== stationName);
+    } else {
+      updatedWatchlist = [...watchlist, stationName];
     }
-  };
-
-  const fetchWatchlist = async (jwtToken: string) => {
-    try {
-      const res = await fetch(`/api/watchlist`, {
-        headers: { "Authorization": `Bearer ${jwtToken}` }
-      });
-      if (res.ok) {
-        const list = await res.json();
-        setWatchlist(list);
-      }
-    } catch (e) {
-      console.warn("Watchlist API offline");
-    }
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem("jwt_token");
-    setToken(null);
-    setUser(null);
-    setWatchlist([]);
-    setWatchlistFilter(false);
-  };
-
-  const handleAuthSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError(null);
-
-    const isLogin = authModal.tab === "login";
-    const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
-    const payload = { username: usernameInput, password: passwordInput };
-
-    try {
-      const res = await fetch(`${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const jwtToken = data.access_token;
-        localStorage.setItem("jwt_token", jwtToken);
-        setToken(jwtToken);
-        setUser(data.user);
-        fetchWatchlist(jwtToken);
-        
-        setUsernameInput("");
-        setPasswordInput("");
-        setAuthModal({ isOpen: false, tab: "login" });
-      } else {
-        const err = await res.json();
-        setAuthError(err.detail || "Xác thực không thành công.");
-      }
-    } catch (e) {
-      const jwtToken = "simulated_local_token_jwt";
-      localStorage.setItem("jwt_token", jwtToken);
-      setToken(jwtToken);
-      setUser({ username: usernameInput });
-      setWatchlist(["Hoang Sa", "Macclesfield", "Con Dao"]);
-      
-      setUsernameInput("");
-      setPasswordInput("");
-      setAuthModal({ isOpen: false, tab: "login" });
-    }
-  };
-
-  const toggleWatchlist = async (stationName: string) => {
-    if (!token) {
-      setAuthModal({ isOpen: true, tab: "login" });
-      return;
-    }
-
-    try {
-      const res = await fetch(`/api/watchlist/toggle`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({ station_name: stationName })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setWatchlist(data.watchlist);
-      }
-    } catch (e) {
-      if (watchlist.includes(stationName)) {
-        setWatchlist(watchlist.filter(name => name !== stationName));
-      } else {
-        setWatchlist([...watchlist, stationName]);
-      }
-    }
+    setWatchlist(updatedWatchlist);
+    localStorage.setItem("local_watchlist", JSON.stringify(updatedWatchlist));
   };
 
   const loadData = async (stormLevel: number | "auto") => {
@@ -523,30 +413,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Auth status & controls */}
-        <div className="flex flex-wrap items-center gap-3 text-sm">
-          {user ? (
-            <div className="flex items-center gap-2 border border-slate-800 bg-slate-900/60 pl-3 pr-1 py-1 rounded-full text-slate-200">
-              <UserIcon className="w-3.5 h-3.5 text-blue-400" />
-              <span className="text-xs font-semibold">{user.username}</span>
-              <button 
-                onClick={handleLogout}
-                className="ml-1 p-1 rounded-full hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition-colors"
-                title="Đăng xuất"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ) : (
-            <button 
-              onClick={() => setAuthModal({ isOpen: true, tab: "login" })}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs font-bold transition-all"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              Đăng nhập / Đăng ký
-            </button>
-          )}
-
+        {/* Database latency badge & Controls */}
+        <div className="flex items-center gap-3 text-sm">
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-800 bg-slate-900/60 text-slate-300">
             <Database className="w-3.5 h-3.5 text-blue-400" />
             <span className="text-xs font-bold text-cyan-400">{apiLatency ? `${apiLatency}ms` : "---"}</span>
@@ -729,23 +597,21 @@ export default function Home() {
                       </select>
                     </div>
 
-                    {/* Watchlist Filter Toggle */}
-                    {user && (
-                      <button
-                        onClick={() => setWatchlistFilter(!watchlistOnlyFilter)}
-                        className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-semibold transition-all ${
-                          watchlistOnlyFilter 
-                            ? "bg-amber-500/10 border-amber-500/50 text-amber-400" 
-                            : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
-                        }`}
-                      >
-                        <Star className={`w-4 h-4 ${watchlistOnlyFilter ? "fill-amber-400" : ""}`} />
-                        {watchlistOnlyFilter ? "Đang lọc: Trạm theo dõi" : "Chỉ xem trạm theo dõi"}
-                        <span className="ml-auto bg-slate-950 px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-300">
-                          {watchlist.length}
-                        </span>
-                      </button>
-                    )}
+                    {/* Unconditional Local Watchlist Filter Toggle */}
+                    <button
+                      onClick={() => setWatchlistFilter(!watchlistOnlyFilter)}
+                      className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-semibold transition-all ${
+                        watchlistOnlyFilter 
+                          ? "bg-amber-500/10 border-amber-500/50 text-amber-400" 
+                          : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      <Star className={`w-4 h-4 ${watchlistOnlyFilter ? "fill-amber-400" : ""}`} />
+                      {watchlistOnlyFilter ? "Đang lọc: Trạm theo dõi" : "Chỉ xem trạm theo dõi"}
+                      <span className="ml-auto bg-slate-950 px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-300">
+                        {watchlist.length}
+                      </span>
+                    </button>
                   </div>
 
                   {/* Simulated Storm level */}
@@ -1212,101 +1078,6 @@ export default function Home() {
         <div>Hệ thống giám sát và dự báo cấp cao Biển Đông Advanced • Dự án Dự báo Khí tượng Thủy văn Quốc gia MLOps</div>
         <div className="text-[10px] text-slate-600">Phát triển bằng Next.js (TypeScript) + Tailwind CSS + FastAPI + XGBoost Regressor</div>
       </footer>
-
-      {/* --- AUTH MODAL OVERLAY --- */}
-      {authModal.isOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-xl p-6 shadow-2xl relative">
-            <button 
-              onClick={() => setAuthModal({ ...authModal, isOpen: false })}
-              className="absolute right-4 top-4 p-1 rounded-lg text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            {/* Modal Navigation */}
-            <div className="flex border-b border-slate-800 mb-6">
-              <button 
-                onClick={() => { setAuthModal({ ...authModal, tab: "login" }); setAuthError(null); }}
-                className={`flex-1 py-3 text-sm font-bold border-b-2 -mb-px transition-all ${
-                  authModal.tab === "login" ? "border-blue-500 text-blue-400" : "border-transparent text-slate-500 hover:text-slate-300"
-                }`}
-              >
-                Đăng nhập
-              </button>
-              <button 
-                onClick={() => { setAuthModal({ ...authModal, tab: "register" }); setAuthError(null); }}
-                className={`flex-1 py-3 text-sm font-bold border-b-2 -mb-px transition-all ${
-                  authModal.tab === "register" ? "border-blue-500 text-blue-400" : "border-transparent text-slate-500 hover:text-slate-300"
-                }`}
-              >
-                Tạo tài khoản
-              </button>
-            </div>
-
-            {/* Title / Info */}
-            <div className="mb-4">
-              <p className="text-xs text-slate-400 leading-relaxed">
-                {authModal.tab === "login" 
-                  ? "Đăng nhập để quản lý danh sách trạm theo dõi cá nhân và xem cảnh báo khẩn cấp."
-                  : "Đăng ký tài khoản cá nhân mới cực nhanh chỉ bằng tên và mật khẩu."}
-              </p>
-            </div>
-
-            {authError && (
-              <div className="bg-rose-500/10 border border-rose-500/30 text-rose-400 p-3 rounded-lg text-xs mb-4 flex items-start gap-2">
-                <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                <span>{authError}</span>
-              </div>
-            )}
-
-            {/* Auth Form */}
-            <form onSubmit={handleAuthSubmit} className="flex flex-col gap-4">
-              
-              {/* Username */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tên tài khoản</label>
-                <div className="relative">
-                  <UserIcon className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
-                  <input 
-                    type="text" 
-                    required
-                    value={usernameInput}
-                    onChange={(e) => setUsernameInput(e.target.value)}
-                    placeholder="Nhập tên đăng nhập..."
-                    className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm placeholder-slate-600 focus:outline-none focus:border-blue-500 text-slate-100 transition-colors"
-                  />
-                </div>
-              </div>
-
-              {/* Password */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Mật khẩu</label>
-                <div className="relative">
-                  <LogIn className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
-                  <input 
-                    type="password" 
-                    required
-                    value={passwordInput}
-                    onChange={(e) => setPasswordInput(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm placeholder-slate-600 focus:outline-none focus:border-blue-500 text-slate-100 transition-colors"
-                  />
-                </div>
-              </div>
-
-              {/* Submit */}
-              <button
-                type="submit"
-                className="w-full py-2.5 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-bold rounded-lg text-xs uppercase tracking-wider transition-all mt-2"
-              >
-                {authModal.tab === "login" ? "Đăng nhập" : "Tạo tài khoản và Đăng nhập"}
-              </button>
-
-            </form>
-          </div>
-        </div>
-      )}
 
     </div>
   );
