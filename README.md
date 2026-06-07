@@ -315,3 +315,28 @@ sudo journalctl -u cloudflared-quick -n 50 --no-pager
     *   Các node này sẽ định kỳ gửi dữ liệu đo đạc thực địa trực tiếp về cổng API máy chủ thông qua giao thức siêu nhẹ **MQTT** hoặc **HTTP POST**, làm giàu thêm dữ liệu huấn luyện cho mô hình.
 3.  **Tích hợp bản đồ ngoại tuyến (Offline GIS Map):**
     *   Để chuẩn bị cho kịch bản mất kết nối mạng Internet hoàn toàn trong thiên tai cực đoan, hệ thống cần tích hợp các gói bản đồ vector ngoại tuyến thông qua công nghệ Mapbox Offline hoặc Leaflet lưu trữ ngay trên thẻ nhớ của Pi.
+
+---
+
+## 🌟 8. Các Cập Nhật Mới Nhất (Phiên bản v1.3.0 - Hiện đại & Tối ưu hóa cực hạn)
+
+Để nâng cấp Dashboard thành một công cụ chỉ huy khí quyển chuyên nghiệp, tối ưu hóa tuyệt đối tốc độ tải trang và giải phóng tối đa tài nguyên cho Raspberry Pi, các cải tiến lớn sau đã được tích hợp thành công:
+
+1.  **Bản đồ địa lý GIS thực tế (Interactive Leaflet Map)**:
+    *   Loại bỏ bản đồ tĩnh SVG 2D cũ, tích hợp bản đồ địa lý tương tác động **Leaflet GIS Map**.
+    *   Sử dụng Layer nền tối của **CartoDB Dark Matter** sắc nét, khớp 100% với tông màu tối huyền bí của Dashboard.
+    *   Các điểm trạm (`CircleMarker`) tự động đổi màu theo cấp bão thực tế, có tooltip hiển thị thông số nhanh khi di chuột.
+    *   Tính năng tự động bay camera (`map.flyTo`) mượt mà kết hợp hiệu ứng định vị vòng tròn đứt đoạn bán kính 45km bao quanh trạm đang chọn.
+
+2.  **Bảng theo dõi nhanh thông số trọng điểm (Quick Tracking Table)**:
+    *   Bổ sung bảng thông tin full-width nằm ngang ở vị trí trung tâm, giúp người vận hành có góc nhìn tổng quan nhanh về các thông số hiện tại của nhiều trạm cùng lúc.
+    *   Tích hợp thuật toán tự động ưu tiên lọc các trạm nằm trong **Danh sách theo dõi (Watchlist)** hoặc trạm đang **có bão/áp thấp (Cấp $\ge 1$)**. Nếu không có, bảng tự động hiển thị 5 trạm đảo lớn cốt lõi của Việt Nam làm dữ liệu mẫu.
+    *   Hỗ trợ click trực tiếp vào hàng bất kỳ trên bảng để chọn trạm tức thì.
+
+3.  **Tách 3 đồ thị xu hướng 24h độc lập (Split Trend Charts)**:
+    *   Tách đồ thị Recharts tổng hợp cũ thành **3 đồ thị mini xếp dọc**: Dự báo lượng mưa (mm), Dự báo tốc độ gió (km/h) và Dự báo khí áp (hPa).
+    *   Giải quyết triệt để dải đo chênh lệch của các thông số vật lý khác nhau, giúp việc phân tích xu hướng dự báo trở nên vô cùng trực quan và chính xác.
+
+4.  **Tối giản hóa Module Đăng nhập & Chuyển đổi sang Local Watchlist**:
+    *   Loại bỏ hoàn toàn module Email/Telegram và cổng Xác thực (Login/Register) cồng kềnh, giải quyết triệt để các vấn đề bảo mật và bộ nhớ tĩnh.
+    *   Chuyển đổi tính năng **Theo dõi trạm** (Watchlist) sang lưu trữ trực tiếp dưới Client-side thông qua **`localStorage`** của trình duyệt. Người dùng không cần tạo tài khoản mà vẫn lưu trữ được danh sách trạm yêu thích hoàn toàn miễn phí và bảo mật tuyệt đối.
