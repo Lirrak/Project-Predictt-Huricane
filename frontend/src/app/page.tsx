@@ -5,7 +5,6 @@ import {
   Search, 
   Filter, 
   MapPin, 
-  CloudRain, 
   Wind, 
   Compass, 
   Thermometer, 
@@ -15,17 +14,13 @@ import {
   RefreshCw, 
   TrendingUp, 
   Database,
-  CheckCircle,
-  Cpu,
   Star,
   User as UserIcon,
   LogIn,
   LogOut,
-  Bell,
-  Mail,
-  Send,
   X,
-  AlertTriangle
+  AlertTriangle,
+  CheckCircle
 } from "lucide-react";
 import {
   LineChart,
@@ -34,12 +29,11 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer
 } from "recharts";
 
 // Configuration
-const API_BASE_URL = "http://localhost:8000";
+const API_BASE_URL = "";
 
 // Constants for Severity Colors & Names
 const SEVERITY_NAMES: Record<number, string> = {
@@ -162,7 +156,6 @@ export default function Home() {
   const [severityFilter, setSeverityFilter] = useState<number | "all">("all");
   const [watchlistOnlyFilter, setWatchlistFilter] = useState(false);
   const [simulatedStorm, setSimulatedStorm] = useState<number | "auto">("auto");
-  const [raspberryStatus, setRaspberryStatus] = useState<{status: string, lastSeen: string | null}>({status: "UNKNOWN", lastSeen: null});
   const [loading, setLoading] = useState(true);
   const [apiLatency, setApiLatency] = useState<number | null>(null);
 
@@ -175,8 +168,6 @@ export default function Home() {
   const [authModal, setAuthModal] = useState<{ isOpen: boolean, tab: "login" | "register" }>({ isOpen: false, tab: "login" });
   const [usernameInput, setUsernameInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
-  const [emailInput, setEmailInput] = useState("");
-  const [telegramInput, setTelegramInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
 
   // Load Saved Auth Tokens on Init
@@ -190,7 +181,7 @@ export default function Home() {
 
   const fetchUserProfile = async (jwtToken: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+      const res = await fetch(`/api/auth/me`, {
         headers: { "Authorization": `Bearer ${jwtToken}` }
       });
       if (res.ok) {
@@ -198,19 +189,16 @@ export default function Home() {
         setUser(uData);
         fetchWatchlist(jwtToken);
       } else {
-        // Clear corrupt token
         handleLogout();
       }
     } catch (e) {
-      console.warn("Could not reach Auth endpoint, using offline session mock.");
-      // Standard local fallback for presentation purposes
-      setUser({ username: "Guest User", email: "guest@prediction.gov.vn", telegram_chat_id: "12345678" });
+      setUser({ username: "Guest User" });
     }
   };
 
   const fetchWatchlist = async (jwtToken: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/watchlist`, {
+      const res = await fetch(`/api/watchlist`, {
         headers: { "Authorization": `Bearer ${jwtToken}` }
       });
       if (res.ok) {
@@ -236,12 +224,10 @@ export default function Home() {
 
     const isLogin = authModal.tab === "login";
     const endpoint = isLogin ? "/api/auth/login" : "/api/auth/register";
-    const payload = isLogin 
-      ? { username: usernameInput, password: passwordInput }
-      : { username: usernameInput, password: passwordInput, email: emailInput || null, telegram_chat_id: telegramInput || null };
+    const payload = { username: usernameInput, password: passwordInput };
 
     try {
-      const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+      const res = await fetch(`${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -255,47 +241,34 @@ export default function Home() {
         setUser(data.user);
         fetchWatchlist(jwtToken);
         
-        // Reset Inputs & Close Modal
         setUsernameInput("");
         setPasswordInput("");
-        setEmailInput("");
-        setTelegramInput("");
         setAuthModal({ isOpen: false, tab: "login" });
       } else {
         const err = await res.json();
         setAuthError(err.detail || "Xác thực không thành công.");
       }
     } catch (e) {
-      console.warn("Auth Server offline, simulating successful login locally...");
-      // Simulate login for frontend standalone execution
       const jwtToken = "simulated_local_token_jwt";
       localStorage.setItem("jwt_token", jwtToken);
       setToken(jwtToken);
-      const simulatedUser = {
-        username: usernameInput,
-        email: emailInput || "user@meteorology.gov.vn",
-        telegram_chat_id: telegramInput || "87654321"
-      };
-      setUser(simulatedUser);
+      setUser({ username: usernameInput });
       setWatchlist(["Hoang Sa", "Macclesfield", "Con Dao"]);
       
       setUsernameInput("");
       setPasswordInput("");
-      setEmailInput("");
-      setTelegramInput("");
       setAuthModal({ isOpen: false, tab: "login" });
     }
   };
 
   const toggleWatchlist = async (stationName: string) => {
     if (!token) {
-      // Trigger login prompt
       setAuthModal({ isOpen: true, tab: "login" });
       return;
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/watchlist/toggle`, {
+      const res = await fetch(`/api/watchlist/toggle`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",
@@ -309,7 +282,6 @@ export default function Home() {
         setWatchlist(data.watchlist);
       }
     } catch (e) {
-      // Offline fallback toggle simulation
       if (watchlist.includes(stationName)) {
         setWatchlist(watchlist.filter(name => name !== stationName));
       } else {
@@ -318,35 +290,19 @@ export default function Home() {
     }
   };
 
-  // Fetch or fallback data
   const loadData = async (stormLevel: number | "auto") => {
     setLoading(true);
     const startTime = Date.now();
     try {
-      try {
-        const rRes = await fetch(`${API_BASE_URL}/api/iot/status`);
-        if (rRes.ok) {
-          const rData = await rRes.json();
-          setRaspberryStatus({
-            status: rData.status,
-            lastSeen: rData.last_heartbeat_time ? `${rData.seconds_since_last_heartbeat}s trước` : null
-          });
-        }
-      } catch (e) {
-        console.warn("Could not fetch Raspberry Pi status");
-      }
-
-      let url = `${API_BASE_URL}/api/stations/forecast`;
       let res;
-      
       if (stormLevel !== "auto") {
-        res = await fetch(`${API_BASE_URL}/api/forecast/predict`, {
+        res = await fetch(`/api/forecast/predict`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ station_name: "all", simulated_storm_level: stormLevel })
         });
       } else {
-        res = await fetch(url);
+        res = await fetch(`/api/stations/forecast`);
       }
 
       if (res.ok) {
@@ -394,7 +350,128 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [simulatedStorm, selectedStation]);
 
-  // Filter stations based on search, storm level, and watchlist
+  // Dynamic Leaflet GIS Map Logic
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let mapInstance: any = null;
+    let markersGroup: any = null;
+
+    Promise.all([
+      import("leaflet"),
+      import("leaflet/dist/leaflet.css")
+    ]).then(([L]) => {
+      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      L.Icon.Default.mergeOptions({
+        iconRetinaUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-icon-2x.png",
+        iconUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-icon.png",
+        shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.3.1/images/marker-shadow.png",
+      });
+
+      const container = document.getElementById("map-container");
+      if (!container || (container as any)._leaflet_id) return;
+
+      mapInstance = L.map("map-container", {
+        zoomControl: true,
+        attributionControl: false
+      }).setView([15.0, 114.0], 5);
+
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+        maxZoom: 18,
+      }).addTo(mapInstance);
+
+      markersGroup = L.layerGroup().addTo(mapInstance);
+      (window as any).leafletMap = mapInstance;
+      (window as any).leafletMarkers = markersGroup;
+      (window as any).L = L;
+
+      drawMarkers();
+    });
+
+    return () => {
+      if (mapInstance) {
+        mapInstance.remove();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    drawMarkers();
+  }, [stationsData, watchlist, selectedStation]);
+
+  useEffect(() => {
+    const map = (window as any).leafletMap;
+    const L = (window as any).L;
+    if (!map || !L || !selectedStation) return;
+
+    map.flyTo([selectedStation.latitude, selectedStation.longitude], 6, {
+      animate: true,
+      duration: 1.2
+    });
+
+    if ((window as any).pulseCircleInstance) {
+      map.removeLayer((window as any).pulseCircleInstance);
+    }
+
+    const color = SEVERITY_COLORS[selectedStation.storm_severity] || "#3498db";
+    const circle = L.circle([selectedStation.latitude, selectedStation.longitude], {
+      color: color,
+      fillColor: color,
+      fillOpacity: 0.1,
+      radius: 45000,
+      weight: 1.5,
+      dashArray: "5, 5"
+    }).addTo(map);
+
+    (window as any).pulseCircleInstance = circle;
+  }, [selectedStation]);
+
+  const drawMarkers = () => {
+    const map = (window as any).leafletMap;
+    const markers = (window as any).leafletMarkers;
+    const L = (window as any).L;
+    if (!map || !L || !markers || !stationsData.length) return;
+
+    markers.clearLayers();
+
+    stationsData.forEach((st: any) => {
+      const color = SEVERITY_COLORS[st.storm_severity] || "#2ecc71";
+      const isWatched = watchlist.includes(st.station_name);
+      const isSelected = selectedStation?.station_name === st.station_name;
+      
+      const borderColor = isWatched ? "#fbbf24" : isSelected ? "#ffffff" : "#0f172a";
+      const borderWidth = isWatched ? 2 : isSelected ? 2.5 : 1;
+      const radius = isSelected ? 10 : isWatched ? 8 : 6.5;
+
+      const marker = L.circleMarker([st.latitude, st.longitude], {
+        radius: radius,
+        fillColor: color,
+        color: borderColor,
+        weight: borderWidth,
+        fillOpacity: 0.85
+      });
+
+      marker.on("click", () => {
+        setSelectedStation(st);
+      });
+
+      marker.bindTooltip(`
+        <div style="background-color:#0f172a; color:#f1f5f9; padding: 4px 8px; border-radius: 4px; border: 1px solid #334155; font-size: 11px; font-family: sans-serif;">
+          <strong>${st.station_name}</strong> ${isWatched ? "★" : ""}<br/>
+          Cấp bão: ${SEVERITY_NAMES[st.storm_severity]}<br/>
+          Gió: ${st.wind_speed} km/h<br/>
+          Khí áp: ${st.press} hPa
+        </div>
+      `, {
+        permanent: false,
+        direction: "top",
+        opacity: 0.95
+      });
+
+      marker.addTo(markers);
+    });
+  };
+
   const filteredStations = stationsData.filter(st => {
     const matchesSearch = st.station_name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSeverity = severityFilter === "all" || st.storm_severity === severityFilter;
@@ -420,14 +497,12 @@ export default function Home() {
       trend.push({
         time: hourStr,
         "Mưa dự báo (mm)": Number(rainDelta.toFixed(1)),
-        "Gió dự báo (km/h)": Number(windSpeedClamp(windDelta).toFixed(1)),
+        "Gió dự báo (km/h)": Number(Math.max(0, windDelta).toFixed(1)),
         "Khí áp dự báo (hPa)": Number(presDelta.toFixed(1))
       });
     }
     return trend;
   };
-
-  const windSpeedClamp = (val: number) => Math.max(0, val);
 
   return (
     <div className="flex flex-col min-h-screen bg-slate-900 text-slate-100 font-sans">
@@ -435,7 +510,7 @@ export default function Home() {
       {/* Header Bar */}
       <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
         <div className="flex items-center gap-3">
-          <div className="bg-blue-600 p-2 rounded-lg text-white animate-pulse">
+          <div className="bg-blue-600 p-2 rounded-lg text-white">
             <Compass className="w-6 h-6" />
           </div>
           <div>
@@ -443,7 +518,7 @@ export default function Home() {
               🌊 HỆ THỐNG DỰ BÁO KHÍ TƯỢNG HẢI DƯƠNG BIỂN ĐÔNG
             </h1>
             <p className="text-xs text-slate-400 font-medium">
-              Học máy XGBoost kết hợp Watchlist & Tự động Cảnh báo Thiên tai Email/Telegram
+              Học máy XGBoost kết hợp Watchlist Giám sát Trực quan thời gian thực
             </p>
           </div>
         </div>
@@ -454,11 +529,6 @@ export default function Home() {
             <div className="flex items-center gap-2 border border-slate-800 bg-slate-900/60 pl-3 pr-1 py-1 rounded-full text-slate-200">
               <UserIcon className="w-3.5 h-3.5 text-blue-400" />
               <span className="text-xs font-semibold">{user.username}</span>
-              {(user.email || user.telegram_chat_id) && (
-                <span title="Thông báo đang hoạt động">
-                  <Bell className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
-                </span>
-              )}
               <button 
                 onClick={handleLogout}
                 className="ml-1 p-1 rounded-full hover:bg-slate-800 text-slate-400 hover:text-slate-100 transition-colors"
@@ -473,19 +543,9 @@ export default function Home() {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 text-xs font-bold transition-all"
             >
               <LogIn className="w-3.5 h-3.5" />
-              Đăng nhập / Đăng ký nhận Tin bão
+              Đăng nhập / Đăng ký
             </button>
           )}
-
-          <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border bg-slate-900/60 ${
-            raspberryStatus.status === "ONLINE" 
-              ? "border-emerald-500/30 text-emerald-400" 
-              : "border-rose-500/30 text-rose-400"
-          }`}>
-            <Cpu className="w-4 h-4" />
-            <span className="font-semibold text-xs">Pi:</span>
-            <span className="text-xs uppercase">{raspberryStatus.status}</span>
-          </div>
 
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-800 bg-slate-900/60 text-slate-300">
             <Database className="w-3.5 h-3.5 text-blue-400" />
@@ -532,517 +592,510 @@ export default function Home() {
       <main className="flex-1 p-6">
         
         {activeTab === "monitor" && (
-          <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-            
-            {/* Sidebar Column (Controls & Lists) */}
-            <div className="xl:col-span-3 flex flex-col gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/60 max-h-[820px] overflow-hidden">
-              <div className="flex flex-col gap-2">
-                <h3 className="text-sm font-bold text-slate-400 tracking-wider uppercase mb-1">🔍 Tìm kiếm & Sắp xếp</h3>
-                
-                {/* Search */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
-                  <input 
-                    type="text" 
-                    placeholder="Tìm tên trạm..." 
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 text-slate-100 transition-colors"
-                  />
-                </div>
+          <div className="flex flex-col gap-6">
 
-                {/* Filters Row */}
-                <div className="grid grid-cols-1 gap-2 mt-1">
-                  
-                  {/* Category Filter */}
-                  <div className="flex items-center gap-2 bg-slate-900 px-3 py-2 border border-slate-800 rounded-lg">
-                    <Filter className="w-4 h-4 text-slate-500" />
-                    <select 
-                      value={severityFilter} 
-                      onChange={(e) => setSeverityFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
-                      className="bg-transparent text-xs text-slate-300 w-full focus:outline-none cursor-pointer"
-                    >
-                      <option value="all">Tất cả cấp bão</option>
-                      {Object.entries(SEVERITY_NAMES).map(([key, value]) => (
-                        <option key={key} value={key} className="bg-slate-900 text-slate-100">
-                          Cấp {key}: {value}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Watchlist Filter Toggle */}
-                  {user && (
-                    <button
-                      onClick={() => setWatchlistFilter(!watchlistOnlyFilter)}
-                      className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-semibold transition-all ${
-                        watchlistOnlyFilter 
-                          ? "bg-amber-500/10 border-amber-500/50 text-amber-400" 
-                          : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
-                      }`}
-                    >
-                      <Star className={`w-4 h-4 ${watchlistOnlyFilter ? "fill-amber-400" : ""}`} />
-                      {watchlistOnlyFilter ? "Đang lọc: Trạm theo dõi" : "Chỉ xem trạm theo dõi"}
-                      <span className="ml-auto bg-slate-950 px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-300">
-                        {watchlist.length}
-                      </span>
-                    </button>
-                  )}
+            {/* Quick Tracking Table for core stations */}
+            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/60 flex flex-col gap-3">
+              <div className="flex justify-between items-center border-b border-slate-800/60 pb-2">
+                <div className="flex items-center gap-2">
+                  <Database className="w-4 h-4 text-cyan-400" />
+                  <h3 className="text-sm font-bold text-slate-200 tracking-wide">
+                    📋 BẢNG THEO DÕI NHANH CÁC TRẠM TRỌNG ĐIỂM (WATCHLIST & CẢNH BÁO)
+                  </h3>
                 </div>
-
-                {/* Simulated Storm level */}
-                <div className="mt-2 p-3 bg-slate-900/80 border border-slate-800/80 rounded-lg">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-bold text-blue-400 flex items-center gap-1">
-                      <TrendingUp className="w-3.5 h-3.5" /> Thử nghiệm & Giả lập bão
-                    </span>
-                  </div>
-                  <div className="flex gap-1">
-                    <button 
-                      onClick={() => setSimulatedStorm("auto")}
-                      className={`flex-1 text-[9px] font-bold py-1 px-1 rounded border transition-colors ${
-                        simulatedStorm === "auto" 
-                          ? "bg-blue-600 text-white border-blue-500" 
-                          : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
-                      }`}
-                    >
-                      TỰ ĐỘNG
-                    </button>
-                    {[0, 1, 2, 3, 4, 5].map(lvl => (
-                      <button 
-                        key={lvl}
-                        onClick={() => setSimulatedStorm(lvl)}
-                        className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded border transition-all ${
-                          simulatedStorm === lvl 
-                            ? "bg-red-600 border-red-500 text-white shadow-lg shadow-red-600/20" 
-                            : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
-                        }`}
-                      >
-                        {lvl}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <span className="text-[10px] text-slate-500 font-semibold uppercase">
+                  Tự động ưu tiên Trạm theo dõi & Trạm có cảnh báo thiên tai
+                </span>
               </div>
 
-              {/* Station List */}
-              <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 mt-2 pr-1 border-t border-slate-800/40 pt-3">
-                <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold tracking-wider mb-1 uppercase">
-                  <span>Trạm ({filteredStations.length})</span>
-                  <span>Cấp bão</span>
-                </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-800 text-slate-400 bg-slate-900/40">
+                      <th className="p-2.5 font-bold">Tên Trạm</th>
+                      <th className="p-2.5 font-bold">Vị trí GIS</th>
+                      <th className="p-2.5 font-bold">Phân loại</th>
+                      <th className="p-2.5 font-bold text-center">Cấp bão</th>
+                      <th className="p-2.5 font-bold text-center">Nhiệt độ</th>
+                      <th className="p-2.5 font-bold text-center">Sức gió</th>
+                      <th className="p-2.5 font-bold text-center">Khí áp</th>
+                      <th className="p-2.5 font-bold text-center">Sóng biển</th>
+                      <th className="p-2.5 font-bold text-center">Dự báo mưa (24h)</th>
+                      <th className="p-2.5 font-bold text-center">Dự báo gió (24h)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      let coreStations = stationsData.filter((s: any) => 
+                        watchlist.includes(s.station_name) || s.storm_severity >= 1
+                      );
 
-                {filteredStations.length === 0 ? (
-                  <div className="text-center py-8 text-slate-500 text-xs italic">
-                    Không tìm thấy trạm nào.
-                  </div>
-                ) : (
-                  filteredStations.map((st) => {
-                    const isSelected = selectedStation?.station_name === st.station_name;
-                    const isWatched = watchlist.includes(st.station_name);
-                    return (
-                      <button
-                        key={st.station_name}
-                        onClick={() => setSelectedStation(st)}
-                        className={`w-full flex justify-between items-center px-3 py-2.5 rounded-lg border text-left transition-all text-xs ${
-                          isSelected 
-                            ? "bg-blue-600/10 border-blue-500/80 text-blue-200 shadow-md" 
-                            : "bg-slate-900/40 border-slate-800/60 hover:bg-slate-900/80 text-slate-300"
-                        }`}
-                      >
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-semibold text-slate-100 flex items-center gap-1.5">
-                            {st.station_name}
-                            {isWatched && <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />}
-                          </span>
-                          <span className="text-[10px] text-slate-500 font-mono">
-                            Lat: {st.latitude.toFixed(2)}, Lon: {st.longitude.toFixed(2)}
-                          </span>
-                        </div>
-                        <span 
-                          className="px-2 py-1 rounded text-[10px] font-bold border"
-                          style={{
-                            backgroundColor: `${SEVERITY_COLORS[st.storm_severity]}15`,
-                            color: SEVERITY_COLORS[st.storm_severity],
-                            borderColor: `${SEVERITY_COLORS[st.storm_severity]}30`
-                          }}
-                        >
-                          {SEVERITY_NAMES[st.storm_severity]}
-                        </span>
-                      </button>
-                    );
-                  })
-                )}
+                      if (coreStations.length === 0) {
+                        const defaultCoreNames = ["Hoang Sa", "Truong Sa Lon", "Bach Long Vi", "Phu Quy", "Con Dao"];
+                        coreStations = stationsData.filter((s: any) => defaultCoreNames.includes(s.station_name));
+                      }
+
+                      return coreStations.map((st: any) => {
+                        const isSelected = selectedStation?.station_name === st.station_name;
+                        const isWatched = watchlist.includes(st.station_name);
+                        return (
+                          <tr 
+                            key={`table-row-${st.station_name}`}
+                            onClick={() => setSelectedStation(st)}
+                            className={`border-b border-slate-800/40 hover:bg-blue-500/5 cursor-pointer transition-colors ${
+                              isSelected ? "bg-blue-600/10 text-blue-200 font-semibold" : "text-slate-300"
+                            }`}
+                          >
+                            <td className="p-2.5 font-bold flex items-center gap-1.5">
+                              {st.station_name}
+                              {isWatched && <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />}
+                            </td>
+                            <td className="p-2.5 font-mono text-[10px] text-slate-500">
+                              {st.latitude.toFixed(2)}°N, {st.longitude.toFixed(2)}°E
+                            </td>
+                            <td className="p-2.5 text-slate-400">
+                              <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
+                                st.classification === "Land/Coastal" 
+                                  ? "bg-slate-900 border-slate-800 text-slate-400" 
+                                  : "bg-cyan-500/5 border-cyan-500/20 text-cyan-400"
+                              }`}>
+                                {st.classification === "Land/Coastal" ? "Đất liền/Đảo" : "Phao sâu"}
+                              </span>
+                            </td>
+                            <td className="p-2.5 text-center">
+                              <span 
+                                className="px-1.5 py-0.5 rounded text-[10px] font-bold border"
+                                style={{
+                                  backgroundColor: `${SEVERITY_COLORS[st.storm_severity]}15`,
+                                  color: SEVERITY_COLORS[st.storm_severity],
+                                  borderColor: `${SEVERITY_COLORS[st.storm_severity]}30`
+                                }}
+                              >
+                                {SEVERITY_NAMES[st.storm_severity]}
+                              </span>
+                            </td>
+                            <td className="p-2.5 text-center font-mono text-slate-200">{st.temp}°C</td>
+                            <td className="p-2.5 text-center font-mono text-slate-200">{st.wind_speed} km/h</td>
+                            <td className="p-2.5 text-center font-mono text-slate-200">{st.press} hPa</td>
+                            <td className="p-2.5 text-center font-mono text-slate-200">{st.wave_h?.toFixed(1)} m</td>
+                            <td className="p-2.5 text-center font-mono text-blue-400 font-bold">{st.pred_rain?.toFixed(1)} mm</td>
+                            <td className="p-2.5 text-center font-mono text-red-400 font-bold">{st.pred_wind?.toFixed(1)} km/h</td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
               </div>
             </div>
 
-            {/* Center Area: Map View */}
-            <div className="xl:col-span-5 flex flex-col gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/60 min-h-[500px] xl:h-[820px]">
-              <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-300 tracking-wide">📍 Bản đồ tương tác trạm Biển Đông</h3>
-                  <p className="text-[10px] text-slate-500">
-                    Sơ đồ phân loại cấp bão khí tượng học (Ngưỡng cấp 1 trở lên sẽ kích hoạt cảnh báo)
-                  </p>
-                </div>
-              </div>
-
-              {/* Geographic SVG Grid Map */}
-              <div className="flex-1 relative bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-inner flex items-center justify-center p-2 group">
-                
-                <div className="absolute inset-0 grid grid-cols-5 grid-rows-4 pointer-events-none opacity-20">
-                  {Array.from({length: 4}).map((_, i) => (
-                    <div key={`y-${i}`} className="border-b border-slate-700 w-full text-[9px] text-slate-500 p-1 font-mono absolute" style={{top: `${(i+1)*20}%`}}>
-                      {(25 - (i+1)*5)}°N
-                    </div>
-                  ))}
-                  {Array.from({length: 5}).map((_, i) => (
-                    <div key={`x-${i}`} className="border-r border-slate-700 h-full text-[9px] text-slate-500 p-1 font-mono absolute" style={{left: `${(i)*20}%`}}>
-                      {(100 + i*5)}°E
-                    </div>
-                  ))}
-                </div>
-
-                <svg viewBox="0 0 500 500" className="w-full h-full select-none relative z-10">
-                  {/* Vietnam Coastline map shape */}
-                  <path 
-                    d="M 60,30 L 110,40 L 115,60 L 100,75 L 85,90 L 90,110 L 100,120 L 110,135 L 120,150 L 115,165 L 110,180 L 120,200 L 130,220 L 140,230 L 145,245 L 148,260 L 140,275 L 135,290 L 148,310 L 160,320 L 170,335 L 180,345 L 182,360 L 175,375 L 160,390 L 150,400 L 135,405 L 115,408 L 105,420 L 112,435 L 120,442 L 110,450 L 85,460 L 75,470 L 65,475 L 60,465 L 70,450 L 85,445 L 90,430 L 70,425 L 50,428 L 45,410 L 60,400 L 75,395" 
-                    fill="#1e293b" 
-                    fillOpacity="0.15" 
-                    stroke="#334155" 
-                    strokeWidth="1" 
-                    strokeLinecap="round"
-                    className="opacity-60"
-                  />
+            {/* Core split Columns layout */}
+            <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+              
+              {/* Sidebar Column (Controls & Lists) */}
+              <div className="xl:col-span-3 flex flex-col gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/60 max-h-[820px] overflow-hidden">
+                <div className="flex flex-col gap-2">
+                  <h3 className="text-sm font-bold text-slate-400 tracking-wider uppercase mb-1">🔍 Tìm kiếm & Sắp xếp</h3>
                   
-                  {/* Hainan Island */}
-                  <path 
-                    d="M 125,75 Q 145,68 155,85 T 140,110 T 115,100 Z" 
-                    fill="#1e293b" 
-                    fillOpacity="0.15" 
-                    stroke="#334155" 
-                    strokeWidth="1"
-                    className="opacity-60"
-                  />
+                  {/* Search */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-500" />
+                    <input 
+                      type="text" 
+                      placeholder="Tìm tên trạm..." 
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 text-slate-100 transition-colors"
+                    />
+                  </div>
 
-                  {/* Ocean Currents Flow Vectors */}
-                  {stationsData.map((st, i) => {
-                    const x = ((st.longitude - 100) / 25) * 500;
-                    const y = 500 - ((st.latitude - 5) / 20) * 500;
-                    const angleRad = (st.current_dir * Math.PI) / 180;
-                    const length = 15 + st.current_vel * 15;
+                  {/* Filters Row */}
+                  <div className="grid grid-cols-1 gap-2 mt-1">
                     
-                    const dx = Math.sin(angleRad) * length;
-                    const dy = -Math.cos(angleRad) * length;
-
-                    return (
-                      <g key={`flow-${i}`} className="opacity-20 pointer-events-none group-hover:opacity-40 transition-opacity">
-                        <line 
-                          x1={x} 
-                          y1={y} 
-                          x2={x + dx} 
-                          y2={y + dy} 
-                          stroke="#38bdf8" 
-                          strokeWidth="1" 
-                          strokeDasharray="2,2"
-                        />
-                        <polygon 
-                          points={`${x + dx},${y + dy} ${x + dx - Math.sin(angleRad + 0.5) * 4},${y + dy + Math.cos(angleRad + 0.5) * 4} ${x + dx - Math.sin(angleRad - 0.5) * 4},${y + dy + Math.cos(angleRad - 0.5) * 4}`} 
-                          fill="#38bdf8"
-                        />
-                      </g>
-                    );
-                  })}
-
-                  {/* Stations Markers */}
-                  {stationsData.map((st) => {
-                    const x = ((st.longitude - 100) / 25) * 500;
-                    const y = 500 - ((st.latitude - 5) / 20) * 500;
-                    const isSelected = selectedStation?.station_name === st.station_name;
-                    const isWatched = watchlist.includes(st.station_name);
-                    const color = SEVERITY_COLORS[st.storm_severity];
-                    
-                    // Filter match
-                    const matchesSearch = st.station_name.toLowerCase().includes(searchQuery.toLowerCase());
-                    const matchesSeverity = severityFilter === "all" || st.storm_severity === severityFilter;
-                    const matchesWatchlist = !watchlistOnlyFilter || watchlist.includes(st.station_name);
-                    const isVisible = matchesSearch && matchesSeverity && matchesWatchlist;
-
-                    if (!isVisible) return null;
-
-                    return (
-                      <g 
-                        key={st.station_name} 
-                        onClick={() => setSelectedStation(st)}
-                        className="cursor-pointer"
+                    {/* Category Filter */}
+                    <div className="flex items-center gap-2 bg-slate-900 px-3 py-2 border border-slate-800 rounded-lg">
+                      <Filter className="w-4 h-4 text-slate-500" />
+                      <select 
+                        value={severityFilter} 
+                        onChange={(e) => setSeverityFilter(e.target.value === "all" ? "all" : Number(e.target.value))}
+                        className="bg-transparent text-xs text-slate-300 w-full focus:outline-none cursor-pointer"
                       >
-                        {isSelected && (
-                          <circle 
-                            cx={x} 
-                            cy={y} 
-                            r="14" 
-                            fill={color} 
-                            fillOpacity="0.25"
-                            className="animate-ping"
-                          />
-                        )}
-
-                        <circle 
-                          cx={x} 
-                          cy={y} 
-                          r={isSelected ? "8" : "5.5"} 
-                          fill={color} 
-                          stroke={isSelected ? "#ffffff" : isWatched ? "#fbbf24" : "#1e293b"} 
-                          strokeWidth={isSelected ? "2.5" : isWatched ? "2" : "1"}
-                          className="transition-all duration-300 hover:scale-150"
-                        />
-
-                        {isSelected && (
-                          <g>
-                            <rect 
-                              x={x + 12} 
-                              y={y - 12} 
-                              width={st.station_name.length * 7 + 25} 
-                              height="18" 
-                              rx="3" 
-                              fill="#0f172a" 
-                              stroke="#334155" 
-                              strokeWidth="1"
-                            />
-                            <text 
-                              x={x + 17} 
-                              y={y + 1} 
-                              fill="#f1f5f9" 
-                              fontSize="9" 
-                              fontWeight="bold"
-                              fontFamily="sans-serif"
-                            >
-                              {st.station_name} {isWatched ? "★" : ""}
-                            </text>
-                          </g>
-                        )}
-                      </g>
-                    );
-                  })}
-                </svg>
-
-                {/* Legend Card */}
-                <div className="absolute bottom-3 left-3 bg-slate-950/90 px-3 py-2 border border-slate-800 rounded-lg text-[10px] text-slate-400 z-20 flex flex-col gap-1 backdrop-blur font-semibold">
-                  <div className="font-black text-slate-200">🔍 GHI CHÚ BẢN ĐỒ</div>
-                  <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border border-amber-400 bg-amber-400/10"></span> Trạm có theo dõi (Watchlist)</div>
-                  <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span> Hải lưu chuyển động</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Right Area: Station Information */}
-            <div className="xl:col-span-4 flex flex-col gap-4 bg-slate-950/60 p-5 rounded-xl border border-slate-800/60 xl:h-[820px] overflow-y-auto">
-              {selectedStation ? (
-                <>
-                  {/* Station Header & Watch Button */}
-                  <div className="border-b border-slate-800/60 pb-4">
-                    <div className="flex justify-between items-start gap-2">
-                      <div>
-                        <span className="text-[10px] text-blue-400 font-bold tracking-wider uppercase bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
-                          {selectedStation.classification === "Land/Coastal" ? "ĐẤT LIỀN / VEN BIỂN" : "PHAO ẢO BIỂN SÂU"}
-                        </span>
-                        <h2 className="text-xl font-bold text-slate-100 mt-1.5 flex items-center gap-2">
-                          <MapPin className="w-5 h-5 text-blue-500" /> {selectedStation.station_name}
-                        </h2>
-                      </div>
-                      
-                      <div className="text-right">
-                        <span 
-                          className="px-3 py-1 rounded text-xs font-bold border block text-center"
-                          style={{
-                            backgroundColor: `${SEVERITY_COLORS[selectedStation.storm_severity]}15`,
-                            color: SEVERITY_COLORS[selectedStation.storm_severity],
-                            borderColor: `${SEVERITY_COLORS[selectedStation.storm_severity]}30`
-                          }}
-                        >
-                          {SEVERITY_NAMES[selectedStation.storm_severity].toUpperCase()}
-                        </span>
-                        <span className="text-[10px] text-slate-500 font-mono block mt-1">
-                          Cấp {selectedStation.storm_severity}
-                        </span>
-                      </div>
+                        <option value="all">Tất cả cấp bão</option>
+                        {Object.entries(SEVERITY_NAMES).map(([key, value]) => (
+                          <option key={key} value={key} className="bg-slate-900 text-slate-100">
+                            Cấp {key}: {value}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    {/* WATCHLIST TOGGLE BUTTON */}
-                    <div className="flex justify-between items-center mt-4">
-                      <div className="flex gap-4 text-xs text-slate-400 font-mono">
-                        <span>Lat: <strong className="text-slate-300">{selectedStation.latitude.toFixed(2)}°N</strong></span>
-                        <span>Lon: <strong className="text-slate-300">{selectedStation.longitude.toFixed(2)}°E</strong></span>
-                      </div>
-
+                    {/* Watchlist Filter Toggle */}
+                    {user && (
                       <button
-                        onClick={() => toggleWatchlist(selectedStation.station_name)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                          watchlist.includes(selectedStation.station_name)
-                            ? "bg-amber-500/10 border-amber-500/50 text-amber-400 hover:bg-amber-500/20"
-                            : "bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+                        onClick={() => setWatchlistFilter(!watchlistOnlyFilter)}
+                        className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-semibold transition-all ${
+                          watchlistOnlyFilter 
+                            ? "bg-amber-500/10 border-amber-500/50 text-amber-400" 
+                            : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
                         }`}
                       >
-                        <Star className={`w-4 h-4 ${watchlist.includes(selectedStation.station_name) ? "fill-amber-400 text-amber-400" : ""}`} />
-                        {watchlist.includes(selectedStation.station_name) ? "Đang theo dõi" : "Theo dõi trạm"}
+                        <Star className={`w-4 h-4 ${watchlistOnlyFilter ? "fill-amber-400" : ""}`} />
+                        {watchlistOnlyFilter ? "Đang lọc: Trạm theo dõi" : "Chỉ xem trạm theo dõi"}
+                        <span className="ml-auto bg-slate-950 px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-300">
+                          {watchlist.length}
+                        </span>
                       </button>
-                    </div>
-
-                    {!token && (
-                      <p className="text-[10px] text-slate-500 mt-2 text-right">
-                        💡 _Đăng nhập để nhận Email/Telegram tự động khi trạm này có bão_
-                      </p>
                     )}
                   </div>
 
-                  {/* Core physical metrics */}
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1 mb-0.5 flex items-center gap-1.5 border-b border-slate-800/40 pb-1">
-                    <span>🌤️ THÔNG SỐ KHÍ TƯỢNG (METEOROLOGY)</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-1">
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-orange-500/10 p-1.5 rounded text-orange-400"><Thermometer className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Nhiệt độ</span>
-                        <span className="text-xs font-bold text-slate-200">{(selectedStation.temp ?? 0)}°C</span>
-                      </div>
+                  {/* Simulated Storm level */}
+                  <div className="mt-2 p-3 bg-slate-900/80 border border-slate-800/80 rounded-lg">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs font-bold text-blue-400 flex items-center gap-1">
+                        <TrendingUp className="w-3.5 h-3.5" /> Thử nghiệm & Giả lập bão
+                      </span>
                     </div>
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-blue-500/10 p-1.5 rounded text-blue-400"><Droplets className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Độ ẩm</span>
-                        <span className="text-xs font-bold text-slate-200">{(selectedStation.rh ?? 0)}%</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-red-500/10 p-1.5 rounded text-red-400"><Wind className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Tốc độ Gió</span>
-                        <span className="text-xs font-bold text-slate-200">{(selectedStation.wind_speed ?? 0)} km/h</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-teal-500/10 p-1.5 rounded text-teal-400"><Compass className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Hướng Gió</span>
-                        <span className="text-xs font-bold text-slate-200">{(selectedStation.wind_dir ?? 0)}°</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-emerald-500/10 p-1.5 rounded text-emerald-400"><Activity className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Khí áp</span>
-                        <span className="text-xs font-bold text-slate-200">{(selectedStation.press ?? 0)} hPa</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-amber-500/10 p-1.5 rounded text-amber-400"><AlertTriangle className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Xác suất Bão</span>
-                        <span className="text-xs font-bold text-slate-200">{((selectedStation.climatology_prior ?? 0) * 100).toFixed(0)}%</span>
-                      </div>
+                    <div className="flex gap-1">
+                      <button 
+                        onClick={() => setSimulatedStorm("auto")}
+                        className={`flex-1 text-[9px] font-bold py-1 px-1 rounded border transition-colors ${
+                          simulatedStorm === "auto" 
+                            ? "bg-blue-600 text-white border-blue-500" 
+                            : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
+                        }`}
+                      >
+                        TỰ ĐỘNG
+                      </button>
+                      {[0, 1, 2, 3, 4, 5].map(lvl => (
+                        <button 
+                          key={lvl}
+                          onClick={() => setSimulatedStorm(lvl)}
+                          className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded border transition-all ${
+                            simulatedStorm === lvl 
+                              ? "bg-red-600 border-red-500 text-white shadow-lg shadow-red-600/20" 
+                              : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
+                          }`}
+                        >
+                          {lvl}
+                        </button>
+                      ))}
                     </div>
                   </div>
-
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-2.5 mb-0.5 flex items-center gap-1.5 border-b border-slate-800/40 pb-1">
-                    <span>🌊 THÔNG SỐ HẢI VĂN (OCEANOGRAPHY)</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 mt-1">
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-cyan-500/10 p-1.5 rounded text-cyan-400"><Waves className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Nhiệt biển SST</span>
-                        <span className="text-xs font-bold text-slate-200">{(selectedStation.sst ?? 0).toFixed(1)}°C</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-indigo-500/10 p-1.5 rounded text-indigo-400"><Waves className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Chiều cao Sóng</span>
-                        <span className="text-xs font-bold text-slate-200">{(selectedStation.wave_h ?? 0).toFixed(1)} m</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-violet-500/10 p-1.5 rounded text-violet-400"><Activity className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Chu kỳ Sóng</span>
-                        <span className="text-xs font-bold text-slate-200">{(selectedStation.wave_p ?? 0).toFixed(1)} s</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-pink-500/10 p-1.5 rounded text-pink-400"><Compass className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Hướng Sóng</span>
-                        <span className="text-xs font-bold text-slate-200">{(selectedStation.wave_direction ?? 0)}°</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-emerald-500/10 p-1.5 rounded text-emerald-400"><TrendingUp className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Dòng chảy</span>
-                        <span className="text-xs font-bold text-slate-200">{(selectedStation.current_vel ?? 0).toFixed(2)} m/s</span>
-                      </div>
-                    </div>
-                    <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
-                      <div className="bg-blue-500/10 p-1.5 rounded text-blue-400"><Compass className="w-3.5 h-3.5" /></div>
-                      <div className="flex flex-col">
-                        <span className="text-[9px] text-slate-500">Hướng Dòng</span>
-                        <span className="text-xs font-bold text-slate-200">{(selectedStation.current_dir ?? 0)}°</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Predictions Output */}
-                  <div className="bg-slate-900/40 p-4 rounded-xl border border-blue-500/20 shadow-lg mt-1">
-                    <h3 className="text-xs font-bold text-blue-400 tracking-wider uppercase mb-3 flex items-center gap-1.5">
-                      <TrendingUp className="w-4 h-4 text-cyan-400" /> Kết quả dự báo đa nhiệm XGBoost (24h tới)
-                    </h3>
-                    <div className="grid grid-cols-3 gap-3 text-center">
-                      <div className="bg-slate-950/60 p-2.5 rounded border border-slate-800">
-                        <span className="text-[9px] text-slate-500 block uppercase font-bold mb-1">Lượng mưa</span>
-                        <span className="text-sm font-black text-blue-400 font-mono">{selectedStation.pred_rain.toFixed(1)}</span>
-                        <span className="text-[9px] text-slate-400 block mt-0.5">mm</span>
-                      </div>
-                      <div className="bg-slate-950/60 p-2.5 rounded border border-slate-800">
-                        <span className="text-[9px] text-slate-500 block uppercase font-bold mb-1">Tốc độ Gió</span>
-                        <span className="text-sm font-black text-red-400 font-mono">{windSpeedClamp(selectedStation.pred_wind).toFixed(1)}</span>
-                        <span className="text-[9px] text-slate-400 block mt-0.5">km/h</span>
-                      </div>
-                      <div className="bg-slate-950/60 p-2.5 rounded border border-slate-800">
-                        <span className="text-[9px] text-slate-500 block uppercase font-bold mb-1">Khí áp</span>
-                        <span className="text-sm font-black text-emerald-400 font-mono">{selectedStation.pred_pres.toFixed(0)}</span>
-                        <span className="text-[9px] text-slate-400 block mt-0.5">hPa</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* 24h trend graph */}
-                  <div className="flex-1 min-h-[180px] bg-slate-900/40 border border-slate-800/80 p-3 rounded-xl flex flex-col mt-1">
-                    <h4 className="text-xs font-bold text-slate-400 mb-2 flex items-center gap-1">
-                      <TrendingUp className="w-3.5 h-3.5 text-blue-400" /> Đồ thị dự báo xu hướng khí hậu 24h tới
-                    </h4>
-                    <div className="flex-1 h-[150px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={getTrendData(selectedStation)} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                          <XAxis dataKey="time" stroke="#64748b" fontSize={9} />
-                          <YAxis stroke="#64748b" fontSize={9} />
-                          <Tooltip contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155" }} labelStyle={{ fontSize: 10, fontWeight: "bold" }} itemStyle={{ fontSize: 10 }} />
-                          <Line type="monotone" dataKey="Mưa dự báo (mm)" stroke="#3498db" strokeWidth={2} dot={false} />
-                          <Line type="monotone" dataKey="Gió dự báo (km/h)" stroke="#e74c3c" strokeWidth={2} dot={false} />
-                          <Line type="monotone" dataKey="Khí áp dự báo (hPa)" stroke="#2ecc71" strokeWidth={2} dot={false} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-slate-500 text-sm italic">
-                  Vui lòng chọn một trạm từ danh sách.
                 </div>
-              )}
-            </div>
 
+                {/* Station List */}
+                <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 mt-2 pr-1 border-t border-slate-800/40 pt-3">
+                  <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold tracking-wider mb-1 uppercase">
+                    <span>Trạm ({filteredStations.length})</span>
+                    <span>Cấp bão</span>
+                  </div>
+
+                  {filteredStations.length === 0 ? (
+                    <div className="text-center py-8 text-slate-500 text-xs italic">
+                      Không tìm thấy trạm nào.
+                    </div>
+                  ) : (
+                    filteredStations.map((st) => {
+                      const isSelected = selectedStation?.station_name === st.station_name;
+                      const isWatched = watchlist.includes(st.station_name);
+                      return (
+                        <button
+                          key={st.station_name}
+                          onClick={() => setSelectedStation(st)}
+                          className={`w-full flex justify-between items-center px-3 py-2.5 rounded-lg border text-left transition-all text-xs ${
+                            isSelected 
+                              ? "bg-blue-600/10 border-blue-500/80 text-blue-200 shadow-md" 
+                              : "bg-slate-900/40 border-slate-800/60 hover:bg-slate-900/80 text-slate-300"
+                          }`}
+                        >
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-semibold text-slate-100 flex items-center gap-1.5">
+                              {st.station_name}
+                              {isWatched && <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              Lat: {st.latitude.toFixed(2)}, Lon: {st.longitude.toFixed(2)}
+                            </span>
+                          </div>
+                          <span 
+                            className="px-2 py-1 rounded text-[10px] font-bold border"
+                            style={{
+                              backgroundColor: `${SEVERITY_COLORS[st.storm_severity]}15`,
+                              color: SEVERITY_COLORS[st.storm_severity],
+                              borderColor: `${SEVERITY_COLORS[st.storm_severity]}30`
+                            }}
+                          >
+                            {SEVERITY_NAMES[st.storm_severity]}
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* Center Area: Map View */}
+              <div className="xl:col-span-5 flex flex-col gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/60 min-h-[500px] xl:h-[820px]">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-300 tracking-wide">📍 Bản đồ tương tác GIS Biển Đông</h3>
+                    <p className="text-[10px] text-slate-500">
+                      Bản đồ thực tế tích hợp dữ liệu trạm khí tượng thủy văn thực địa
+                    </p>
+                  </div>
+                </div>
+
+                {/* Real GIS Leaflet Map Container */}
+                <div className="flex-1 relative bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-inner flex items-center justify-center p-2">
+                  <div id="map-container" className="w-full h-full rounded-xl z-10" style={{ minHeight: "400px" }}></div>
+
+                  {/* Legend Card */}
+                  <div className="absolute bottom-3 left-3 bg-slate-950/90 px-3 py-2 border border-slate-800 rounded-lg text-[10px] text-slate-400 z-20 flex flex-col gap-1 backdrop-blur font-semibold">
+                    <div className="font-black text-slate-200">🔍 GHI CHÚ BẢN ĐỒ</div>
+                    <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border border-amber-400 bg-amber-400/10"></span> Trạm có theo dõi (Watchlist)</div>
+                    <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Trạm bình thường</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Right Area: Station Information */}
+              <div className="xl:col-span-4 flex flex-col gap-4 bg-slate-950/60 p-5 rounded-xl border border-slate-800/60 xl:h-[820px] overflow-y-auto">
+                {selectedStation ? (
+                  <>
+                    {/* Station Header & Watch Button */}
+                    <div className="border-b border-slate-800/60 pb-4">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <span className="text-[10px] text-blue-400 font-bold tracking-wider uppercase bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
+                            {selectedStation.classification === "Land/Coastal" ? "ĐẤT LIỀN / VEN BIỂN" : "PHAO ẢO BIỂN SÂU"}
+                          </span>
+                          <h2 className="text-xl font-bold text-slate-100 mt-1.5 flex items-center gap-2">
+                            <MapPin className="w-5 h-5 text-blue-500" /> {selectedStation.station_name}
+                          </h2>
+                        </div>
+                        
+                        <div className="text-right">
+                          <span 
+                            className="px-3 py-1 rounded text-xs font-bold border block text-center"
+                            style={{
+                              backgroundColor: `${SEVERITY_COLORS[selectedStation.storm_severity]}15`,
+                              color: SEVERITY_COLORS[selectedStation.storm_severity],
+                              borderColor: `${SEVERITY_COLORS[selectedStation.storm_severity]}30`
+                            }}
+                          >
+                            {SEVERITY_NAMES[selectedStation.storm_severity].toUpperCase()}
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono block mt-1">
+                            Cấp {selectedStation.storm_severity}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* WATCHLIST TOGGLE BUTTON */}
+                      <div className="flex justify-between items-center mt-4">
+                        <div className="flex gap-4 text-xs text-slate-400 font-mono">
+                          <span>Lat: <strong className="text-slate-300">{selectedStation.latitude.toFixed(2)}°N</strong></span>
+                          <span>Lon: <strong className="text-slate-300">{selectedStation.longitude.toFixed(2)}°E</strong></span>
+                        </div>
+
+                        <button
+                          onClick={() => toggleWatchlist(selectedStation.station_name)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
+                            watchlist.includes(selectedStation.station_name)
+                              ? "bg-amber-500/10 border-amber-500/50 text-amber-400 hover:bg-amber-500/20"
+                              : "bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+                          }`}
+                        >
+                          <Star className={`w-4 h-4 ${watchlist.includes(selectedStation.station_name) ? "fill-amber-400 text-amber-400" : ""}`} />
+                          {watchlist.includes(selectedStation.station_name) ? "Đang theo dõi" : "Theo dõi trạm"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Meteorological and Oceanographic parameters */}
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1 mb-0.5 flex items-center gap-1.5 border-b border-slate-800/40 pb-1">
+                      <span>🌤️ THÔNG SỐ KHÍ TƯỢNG (METEOROLOGY)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-orange-500/10 p-1.5 rounded text-orange-400"><Thermometer className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-slate-500">Nhiệt độ</span>
+                          <span className="text-xs font-bold text-slate-200">{(selectedStation.temp ?? 0)}°C</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-blue-500/10 p-1.5 rounded text-blue-400"><Droplets className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-slate-500">Độ ẩm</span>
+                          <span className="text-xs font-bold text-slate-200">{(selectedStation.rh ?? 0)}%</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-red-500/10 p-1.5 rounded text-red-400"><Wind className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-slate-500">Tốc độ Gió</span>
+                          <span className="text-xs font-bold text-slate-200">{(selectedStation.wind_speed ?? 0)} km/h</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-teal-500/10 p-1.5 rounded text-teal-400"><Compass className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-slate-500">Hướng Gió</span>
+                          <span className="text-xs font-bold text-slate-200">{(selectedStation.wind_dir ?? 0)}°</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-emerald-500/10 p-1.5 rounded text-emerald-400"><Activity className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col font-sans">
+                          <span className="text-[9px] text-slate-500">Khí áp</span>
+                          <span className="text-xs font-bold text-slate-200">{(selectedStation.press ?? 0)} hPa</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-amber-500/10 p-1.5 rounded text-amber-400"><AlertTriangle className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col font-sans">
+                          <span className="text-[9px] text-slate-500">Xác suất Bão</span>
+                          <span className="text-xs font-bold text-slate-200">{((selectedStation.climatology_prior ?? 0) * 100).toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-2.5 mb-0.5 flex items-center gap-1.5 border-b border-slate-800/40 pb-1">
+                      <span>🌊 THÔNG SỐ HẢI VĂN (OCEANOGRAPHY)</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-1">
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-cyan-500/10 p-1.5 rounded text-cyan-400"><Waves className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-slate-500">Nhiệt biển SST</span>
+                          <span className="text-xs font-bold text-slate-200">{(selectedStation.sst ?? 0).toFixed(1)}°C</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-indigo-500/10 p-1.5 rounded text-indigo-400"><Waves className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col font-sans">
+                          <span className="text-[9px] text-slate-500">Chiều cao Sóng</span>
+                          <span className="text-xs font-bold text-slate-200">{(selectedStation.wave_h ?? 0).toFixed(1)} m</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-violet-500/10 p-1.5 rounded text-violet-400"><Activity className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col font-sans">
+                          <span className="text-[9px] text-slate-500">Chu kỳ Sóng</span>
+                          <span className="text-xs font-bold text-slate-200">{(selectedStation.wave_p ?? 0).toFixed(1)} s</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-pink-500/10 p-1.5 rounded text-pink-400"><Compass className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col font-sans">
+                          <span className="text-[9px] text-slate-500">Hướng Sóng</span>
+                          <span className="text-xs font-bold text-slate-200">{(selectedStation.wave_direction ?? 0)}°</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-emerald-500/10 p-1.5 rounded text-emerald-400"><TrendingUp className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-slate-500">Dòng chảy</span>
+                          <span className="text-xs font-bold text-slate-200">{(selectedStation.current_vel ?? 0).toFixed(2)} m/s</span>
+                        </div>
+                      </div>
+                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                        <div className="bg-blue-500/10 p-1.5 rounded text-blue-400"><Compass className="w-3.5 h-3.5" /></div>
+                        <div className="flex flex-col">
+                          <span className="text-[9px] text-slate-500">Hướng Dòng</span>
+                          <span className="text-xs font-bold text-slate-200">{(selectedStation.current_dir ?? 0)}°</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Predictions Output */}
+                    <div className="bg-slate-900/40 p-4 rounded-xl border border-blue-500/20 shadow-lg mt-1">
+                      <h3 className="text-xs font-bold text-blue-400 tracking-wider uppercase mb-3 flex items-center gap-1.5">
+                        <TrendingUp className="w-4 h-4 text-cyan-400" /> Kết quả dự báo đa nhiệm XGBoost (24h tới)
+                      </h3>
+                      <div className="grid grid-cols-3 gap-3 text-center">
+                        <div className="bg-slate-950/60 p-2.5 rounded border border-slate-800">
+                          <span className="text-[9px] text-slate-500 block uppercase font-bold mb-1">Lượng mưa</span>
+                          <span className="text-sm font-black text-blue-400 font-mono">{selectedStation.pred_rain.toFixed(1)}</span>
+                          <span className="text-[9px] text-slate-400 block mt-0.5">mm</span>
+                        </div>
+                        <div className="bg-slate-950/60 p-2.5 rounded border border-slate-800">
+                          <span className="text-[9px] text-slate-500 block uppercase font-bold mb-1">Tốc độ Gió</span>
+                          <span className="text-sm font-black text-red-400 font-mono">{Math.max(0, selectedStation.pred_wind).toFixed(1)}</span>
+                          <span className="text-[9px] text-slate-400 block mt-0.5">km/h</span>
+                        </div>
+                        <div className="bg-slate-950/60 p-2.5 rounded border border-slate-800">
+                          <span className="text-[9px] text-slate-500 block uppercase font-bold mb-1">Khí áp</span>
+                          <span className="text-sm font-black text-emerald-400 font-mono">{selectedStation.pred_pres.toFixed(0)}</span>
+                          <span className="text-[9px] text-slate-400 block mt-0.5">hPa</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3 separate trend graphs */}
+                    <div className="flex flex-col gap-3 mt-1">
+                      <h4 className="text-xs font-bold text-slate-400 flex items-center gap-1.5 border-b border-slate-800/40 pb-1.5">
+                        <TrendingUp className="w-4 h-4 text-blue-400" /> ĐỒ THỊ DỰ BÁO XU HƯỚNG 24H TỚI
+                      </h4>
+                      
+                      {/* Graph 1: Rain */}
+                      <div className="bg-slate-900/30 border border-slate-800/60 p-2.5 rounded-lg flex flex-col">
+                        <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider mb-1">🟦 Dự báo Lượng mưa (mm)</span>
+                        <div className="h-[90px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={getTrendData(selectedStation)} margin={{ top: 2, right: 5, left: -25, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                              <XAxis dataKey="time" stroke="#475569" fontSize={8} />
+                              <YAxis stroke="#475569" fontSize={8} />
+                              <Tooltip contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155" }} labelStyle={{ fontSize: 9 }} itemStyle={{ fontSize: 9 }} />
+                              <Line type="monotone" dataKey="Mưa dự báo (mm)" stroke="#38bdf8" strokeWidth={1.5} dot={false} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      {/* Graph 2: Wind */}
+                      <div className="bg-slate-900/30 border border-slate-800/60 p-2.5 rounded-lg flex flex-col">
+                        <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider mb-1">🟥 Dự báo Tốc độ Gió (km/h)</span>
+                        <div className="h-[90px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={getTrendData(selectedStation)} margin={{ top: 2, right: 5, left: -25, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                              <XAxis dataKey="time" stroke="#475569" fontSize={8} />
+                              <YAxis stroke="#475569" fontSize={8} />
+                              <Tooltip contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155" }} labelStyle={{ fontSize: 9 }} itemStyle={{ fontSize: 9 }} />
+                              <Line type="monotone" dataKey="Gió dự báo (km/h)" stroke="#f43f5e" strokeWidth={1.5} dot={false} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+
+                      {/* Graph 3: Pressure */}
+                      <div className="bg-slate-900/30 border border-slate-800/60 p-2.5 rounded-lg flex flex-col">
+                        <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider mb-1">🟩 Dự báo Khí áp (hPa)</span>
+                        <div className="h-[90px]">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={getTrendData(selectedStation)} margin={{ top: 2, right: 5, left: -25, bottom: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                              <XAxis dataKey="time" stroke="#475569" fontSize={8} />
+                              <YAxis stroke="#475569" fontSize={8} domain={["auto", "auto"]} />
+                              <Tooltip contentStyle={{ backgroundColor: "#0f172a", border: "1px solid #334155" }} labelStyle={{ fontSize: 9 }} itemStyle={{ fontSize: 9 }} />
+                              <Line type="monotone" dataKey="Khí áp dự báo (hPa)" stroke="#10b981" strokeWidth={1.5} dot={false} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-slate-500 text-sm italic">
+                    Vui lòng chọn một trạm từ danh sách.
+                  </div>
+                )}
+              </div>
+
+            </div>
           </div>
         )}
 
@@ -1156,7 +1209,7 @@ export default function Home() {
 
       {/* FOOTER */}
       <footer className="border-t border-slate-800 bg-slate-950 py-6 text-center text-xs text-slate-500 flex flex-col gap-2">
-        <div>Hệ thống giám sát và dự bão cấp cao Biển Đông Advanced • Dự án Dự báo Khí tượng Thủy văn Quốc gia MLOps</div>
+        <div>Hệ thống giám sát và dự báo cấp cao Biển Đông Advanced • Dự án Dự báo Khí tượng Thủy văn Quốc gia MLOps</div>
         <div className="text-[10px] text-slate-600">Phát triển bằng Next.js (TypeScript) + Tailwind CSS + FastAPI + XGBoost Regressor</div>
       </footer>
 
@@ -1187,7 +1240,7 @@ export default function Home() {
                   authModal.tab === "register" ? "border-blue-500 text-blue-400" : "border-transparent text-slate-500 hover:text-slate-300"
                 }`}
               >
-                Tạo tài khoản cảnh báo
+                Tạo tài khoản
               </button>
             </div>
 
@@ -1196,7 +1249,7 @@ export default function Home() {
               <p className="text-xs text-slate-400 leading-relaxed">
                 {authModal.tab === "login" 
                   ? "Đăng nhập để quản lý danh sách trạm theo dõi cá nhân và xem cảnh báo khẩn cấp."
-                  : "Đăng ký nhận tin nhắn cảnh báo bão tự động hoàn toàn miễn phí qua Email hoặc Telegram Bot."}
+                  : "Đăng ký tài khoản cá nhân mới cực nhanh chỉ bằng tên và mật khẩu."}
               </p>
             </div>
 
@@ -1241,41 +1294,6 @@ export default function Home() {
                   />
                 </div>
               </div>
-
-              {/* Email (Register Only) */}
-              {authModal.tab === "register" && (
-                <>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Mail className="w-3.5 h-3.5 text-blue-400" /> Địa chỉ Email <span className="text-[9px] text-slate-500 lowercase">(Không bắt buộc)</span>
-                    </label>
-                    <input 
-                      type="email" 
-                      value={emailInput}
-                      onChange={(e) => setEmailInput(e.target.value)}
-                      placeholder="vidu@prediction.gov.vn"
-                      className="w-full px-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm placeholder-slate-600 focus:outline-none focus:border-blue-500 text-slate-100 transition-colors"
-                    />
-                  </div>
-
-                  {/* Telegram Chat ID (Register Only) */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <Send className="w-3.5 h-3.5 text-sky-400" /> Telegram Chat ID <span className="text-[9px] text-slate-500 lowercase">(Không bắt buộc)</span>
-                    </label>
-                    <input 
-                      type="text" 
-                      value={telegramInput}
-                      onChange={(e) => setTelegramInput(e.target.value)}
-                      placeholder="Ví dụ: 54321678"
-                      className="w-full px-4 py-2 bg-slate-950 border border-slate-800 rounded-lg text-sm placeholder-slate-600 focus:outline-none focus:border-blue-500 text-slate-100 transition-colors"
-                    />
-                    <p className="text-[10px] text-slate-500 leading-normal italic">
-                      💡 Mẹo: Chat với `@userinfobot` trên Telegram để lấy Chat ID của bạn.
-                    </p>
-                  </div>
-                </>
-              )}
 
               {/* Submit */}
               <button
