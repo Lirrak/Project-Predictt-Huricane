@@ -158,6 +158,14 @@ sudo systemctl enable hurricane-backend.service hurricane-frontend.service
 sudo systemctl start hurricane-backend.service hurricane-frontend.service
 ```
 
+### 4. Kiểm tra sức khỏe toàn diện hệ thống:
+Hệ thống cung cấp sẵn một kịch bản chẩn đoán tự động `check_system.py` giúp kiểm tra trạng thái hoạt động của các dịch vụ chạy ngầm, kết nối các cổng nội bộ, kiểm tra tính toàn vẹn và mức độ cập nhật của Cơ sở dữ liệu SQLite, cũng như trạng thái liên kết từ xa Cloudflare Tunnel.
+
+Để thực hiện kiểm tra, bạn chỉ cần chạy lệnh sau trên Raspberry Pi:
+```bash
+python3 check_system.py
+```
+
 ---
 
 ## 🌐 6. Hướng Dẫn Expose Ứng Dụng Ra Internet Bằng Cloudflare Tunnel & Nginx Reverse Proxy
