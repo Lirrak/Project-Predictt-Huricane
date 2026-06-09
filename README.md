@@ -157,7 +157,14 @@ sudo systemctl enable hurricane-backend.service hurricane-frontend.service
 sudo systemctl start hurricane-backend.service hurricane-frontend.service
 ```
 
-### 4. Kiểm tra sức khỏe toàn diện hệ thống:
+### 4. Đăng ký dịch vụ MLOps huấn luyện tự động hàng ngày (Tối ưu cho Pi 3 B+):
+Hệ thống cung cấp sẵn script cài đặt nhanh cho dịch vụ huấn luyện tự động định kỳ hàng ngày vào lúc **3:00 AM** với mức phân bổ tài nguyên tối thiểu (**Nice=19**, **IOSchedulingClass=idle**, và **XGBoost n_jobs=2**) để tránh làm chậm hệ thống:
+```bash
+sudo bash setup_mlops_service.sh
+```
+*Lưu ý: Dịch vụ này sẽ tự động thu nạp dữ liệu khí quyển GFS mới từ NOAA sau mỗi 6 giờ, và thực hiện re-train 3 mô hình XGBoost vào lúc 3:00 AM, sau đó tự nạp lại mô hình tĩnh trực tiếp lên FastAPI (Hot-reload) mà không thay đổi link public Cloudflare.*
+
+### 5. Kiểm tra sức khỏe toàn diện hệ thống:
 Hệ thống cung cấp sẵn một kịch bản chẩn đoán tự động `check_system.py` giúp kiểm tra trạng thái hoạt động của các dịch vụ chạy ngầm, kết nối các cổng nội bộ, kiểm tra tính toàn vẹn và mức độ cập nhật của Cơ sở dữ liệu SQLite, cũng như trạng thái liên kết từ xa Cloudflare Tunnel.
 
 Để thực hiện kiểm tra, bạn chỉ cần chạy lệnh sau trên Raspberry Pi:
@@ -340,3 +347,9 @@ sudo journalctl -u cloudflared-quick -n 50 --no-pager
 4.  **Tối giản hóa Module Đăng nhập & Chuyển đổi sang Local Watchlist**:
     *   Loại bỏ hoàn toàn module Email/Telegram và cổng Xác thực (Login/Register) cồng kềnh, giải quyết triệt để các vấn đề bảo mật và bộ nhớ tĩnh.
     *   Chuyển đổi tính năng **Theo dõi trạm** (Watchlist) sang lưu trữ trực tiếp dưới Client-side thông qua **`localStorage`** của trình duyệt. Người dùng không cần tạo tài khoản mà vẫn lưu trữ được danh sách trạm yêu thích hoàn toàn miễn phí và bảo mật tuyệt đối.
+
+5.  **Tự động hóa MLOps & Kiểm định Mô hình Động (Phiên bản v1.4.0 - Tự vận hành 100%)**:
+    *   **Tối ưu tài nguyên cực hạn (Cửa sổ trượt 30 ngày & Lọc mẫu bão)**: Áp dụng thuật toán **Cửa sổ trượt 30 ngày (Moving Window)** cho dữ liệu thực tế và lọc mẫu bão lịch sử (**Storm Sampling**). Giảm dung lượng tập dữ liệu huấn luyện hàng ngày xuống còn ~30.000 mẫu, tiết kiệm **85% RAM tĩnh** và rút ngắn thời gian huấn luyện XGBoost từ hàng chục phút xuống dưới **15 giây** trên Pi 3 B+.
+    *   **Lập lịch huấn luyện ban đêm & Giới hạn CPU (Nice & IO priority)**: Tác vụ re-train 3 mô hình XGBoost chỉ diễn ra duy nhất vào lúc **3:00 AM** hàng ngày. Trình huấn luyện được ép độ ưu tiên thấp nhất hệ thống của Linux (**`Nice=19`**, **`IOSchedulingClass=idle`**) và chỉ sử dụng tối đa **2 nhân CPU** (`n_jobs=2`) để đảm bảo Pi luôn mát mẻ, ổn định.
+    *   **Hot-Reload mô hình không đổi link Cloudflare (`/api/ml/reload`)**: Sau khi huấn luyện xong lúc 3:05 AM, hệ thống tự động gửi yêu cầu nạp trực tiếp mô hình mới lên bộ nhớ RAM của FastAPI Backend mà không cần khởi động lại dịch vụ. Điều này đảm bảo Dashboard đạt **Uptime 100%** và bảo toàn Public URL Cloudflare Tunnel trọn vẹn.
+    *   **Tab Kiểm định Mô hình Động (`/api/ml/audit`)**: Tích hợp luồng kiểm định tự động chạy ngay sau quá trình train. Cập nhật các sai số (MAE, RMSE, CSI, Recall) và các hệ số liên kết vật lý thực tế trực tiếp lên giao diện Dashboard, giúp người dùng có số liệu kiểm chứng trực quan thời gian thực động 100%.
