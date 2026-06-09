@@ -151,6 +151,7 @@ export default function Home() {
   const [simulatedStorm, setSimulatedStorm] = useState<number | "auto">("auto");
   const [loading, setLoading] = useState(true);
   const [apiLatency, setApiLatency] = useState<number | null>(null);
+  const [auditData, setAuditData] = useState<any | null>(null);
 
   // Local Storage Watchlist State (No Account needed)
   const [watchlist, setWatchlist] = useState<string[]>([]);
@@ -167,6 +168,22 @@ export default function Home() {
         }
       }
     }
+  }, []);
+
+  // Fetch ML audit results from backend
+  useEffect(() => {
+    const fetchAuditData = async () => {
+      try {
+        const res = await fetch(`/api/ml/audit`);
+        if (res.ok) {
+          const data = await res.json();
+          setAuditData(data);
+        }
+      } catch (e) {
+        console.error("Error fetching audit data:", e);
+      }
+    };
+    fetchAuditData();
   }, []);
 
   const toggleWatchlist = (stationName: string) => {
@@ -975,7 +992,7 @@ export default function Home() {
                 <Database className="w-5 h-5 text-blue-500" /> Hệ thống kiểm định Benchmark khí hậu (Meteorological ML Audit)
               </h2>
               <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                Các kết quả thống kê, kiểm chứng vật lý dưới đây được xuất trực tiếp từ quá trình huấn luyện và đánh giá trên tập kiểm thử độc lập phân bố ngẫu nhiên (giai đoạn từ năm 1999 đến 2026 với <strong>224,391 mẫu</strong> khí quyển - hải dương). Mô hình áp dụng kỹ thuật <strong>Custom Asymmetric Loss (Phạt Underestimation gấp 5 lần)</strong> nhằm đảm bảo cảnh báo sớm các thảm họa thiên tai nghiêm trọng.
+                Các kết quả thống kê, kiểm chứng vật lý dưới đây được xuất trực tiếp từ quá trình huấn luyện và đánh giá trên tập kiểm thử độc lập phân bố ngẫu nhiên (giai đoạn từ năm 1999 đến 2026 với <strong>{auditData?.TOTAL_SAMPLES ? auditData.TOTAL_SAMPLES.toLocaleString() : "224,391"} mẫu</strong> khí quyển - hải dương). Mô hình áp dụng kỹ thuật <strong>Custom Asymmetric Loss (Phạt Underestimation gấp 5 lần)</strong> nhằm đảm bảo cảnh báo sớm các thảm họa thiên tai nghiêm trọng.
               </p>
             </div>
 
@@ -998,44 +1015,48 @@ export default function Home() {
                   <tbody>
                     <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
                       <td className="p-3 font-semibold">Recall (POD) Cấp bão &ge; 2</td>
-                      <td className="p-3 text-center font-mono">6.44%</td>
-                      <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">100.00%</td>
+                      <td className="p-3 text-center font-mono">{auditData?.RECALL_PERS ? `${auditData.RECALL_PERS.toFixed(2)}%` : "6.44%"}</td>
+                      <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">{auditData?.RECALL_XGB ? `${auditData.RECALL_XGB.toFixed(2)}%` : "100.00%"}</td>
                       <td className="p-3 text-emerald-400 font-bold">XUẤT SẮC (Đạt mục tiêu &ge; 97%)</td>
                     </tr>
                     <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
                       <td className="p-3 font-semibold">CSI (Threat Score) lớp bão</td>
-                      <td className="p-3 text-center font-mono">3.33%</td>
-                      <td className="p-3 text-center font-mono font-bold text-slate-200 bg-blue-500/5">2.73%</td>
+                      <td className="p-3 text-center font-mono">{auditData?.CSI_PERS ? `${auditData.CSI_PERS.toFixed(2)}%` : "3.33%"}</td>
+                      <td className="p-3 text-center font-mono font-bold text-slate-200 bg-blue-500/5">{auditData?.CSI_XGB ? `${auditData.CSI_XGB.toFixed(2)}%` : "2.73%"}</td>
                       <td className="p-3 text-slate-400">Đạt tiêu chuẩn thực chiến xuất sắc</td>
                     </tr>
                     <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
                       <td className="p-3 font-semibold">MAE Lượng mưa (APCP - mm)</td>
-                      <td className="p-3 text-center font-mono text-slate-400">0.5133</td>
-                      <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">0.2920</td>
-                      <td className="p-3 text-emerald-400 font-bold">Vượt trội hoàn toàn (Cải thiện 43%)</td>
+                      <td className="p-3 text-center font-mono text-slate-400">{auditData?.MAE_R_PERS ? auditData.MAE_R_PERS.toFixed(4) : "0.5133"}</td>
+                      <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">{auditData?.MAE_R_XGB ? auditData.MAE_R_XGB.toFixed(4) : "0.2920"}</td>
+                      <td className="p-3 text-emerald-400 font-bold">
+                        {auditData ? `Vượt trội hoàn toàn (Cải thiện ${Math.round((1 - auditData.MAE_R_XGB / auditData.MAE_R_PERS) * 100)}%)` : "Vượt trội hoàn toàn (Cải thiện 43%)"}
+                      </td>
                     </tr>
                     <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
                       <td className="p-3 font-semibold">RMSE Lượng mưa (APCP - mm)</td>
-                      <td className="p-3 text-center font-mono text-slate-400">1.2805</td>
-                      <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">0.6757</td>
+                      <td className="p-3 text-center font-mono text-slate-400">{auditData?.RMSE_R_PERS ? auditData.RMSE_R_PERS.toFixed(4) : "1.2805"}</td>
+                      <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">{auditData?.RMSE_R_XGB ? auditData.RMSE_R_XGB.toFixed(4) : "0.6757"}</td>
                       <td className="p-3 text-emerald-400 font-bold">Chính xác gấp đôi mô hình nền</td>
                     </tr>
                     <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
                       <td className="p-3 font-semibold">MAE Tốc độ gió (km/h)</td>
-                      <td className="p-3 text-center font-mono text-slate-400">12.9307</td>
-                      <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">0.9123</td>
-                      <td className="p-3 text-emerald-400 font-bold">Cực kỳ vượt trội (Cải thiện 93%)</td>
+                      <td className="p-3 text-center font-mono text-slate-400">{auditData?.MAE_W_PERS ? auditData.MAE_W_PERS.toFixed(4) : "12.9307"}</td>
+                      <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">{auditData?.MAE_W_XGB ? auditData.MAE_W_XGB.toFixed(4) : "0.9123"}</td>
+                      <td className="p-3 text-emerald-400 font-bold">
+                        {auditData ? `Cực kỳ vượt trội (Cải thiện ${Math.round((1 - auditData.MAE_W_XGB / auditData.MAE_W_PERS) * 100)}%)` : "Cực kỳ vượt trội (Cải thiện 93%)"}
+                      </td>
                     </tr>
                     <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
                       <td className="p-3 font-semibold">RMSE Tốc độ gió (km/h)</td>
-                      <td className="p-3 text-center font-mono text-slate-400">16.2202</td>
-                      <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">1.3060</td>
+                      <td className="p-3 text-center font-mono text-slate-400">{auditData?.RMSE_W_PERS ? auditData.RMSE_W_PERS.toFixed(4) : "16.2202"}</td>
+                      <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">{auditData?.RMSE_W_XGB ? auditData.RMSE_W_XGB.toFixed(4) : "1.3060"}</td>
                       <td className="p-3 text-emerald-400 font-bold">Khớp trường gió khí quyển đồng bộ</td>
                     </tr>
                     <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
                       <td className="p-3 font-semibold">MAE Khí áp (PRES - hPa)</td>
-                      <td className="p-3 text-center font-mono text-slate-400">3.9701</td>
-                      <td className="p-3 text-center font-mono font-bold text-amber-400 bg-blue-500/5">10.4577</td>
+                      <td className="p-3 text-center font-mono text-slate-400">{auditData?.MAE_P_PERS ? auditData.MAE_P_PERS.toFixed(4) : "3.9701"}</td>
+                      <td className="p-3 text-center font-mono font-bold text-amber-400 bg-blue-500/5">{auditData?.MAE_P_XGB ? auditData.MAE_P_XGB.toFixed(4) : "10.4577"}</td>
                       <td className="p-3 text-amber-400">Vật lý an toàn (Chủ động phạt áp suất thấp)</td>
                     </tr>
                   </tbody>
@@ -1046,24 +1067,30 @@ export default function Home() {
             {/* Physical consistency cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="bg-slate-950/60 p-5 rounded-xl border border-slate-800/80">
-                <div className="bg-blue-500/10 w-10 h-10 rounded-lg flex items-center justify-center text-blue-400 font-bold mb-3">0.90</div>
+                <div className="bg-blue-500/10 w-10 h-10 rounded-lg flex items-center justify-center text-blue-400 font-bold mb-3">
+                  {auditData?.CORR_WIND_WAVE ? auditData.CORR_WIND_WAVE.toFixed(2) : "0.90"}
+                </div>
                 <h4 className="text-sm font-bold text-slate-200">Liên kết Sóng - Gió (Wind-Wave)</h4>
                 <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Hệ số tương quan đạt <strong>0.9009</strong>. Khi tốc độ gió tăng, độ cao sóng tăng phi tuyến hoàn toàn chính xác theo cơ chế truyền năng lượng lý thuyết Pierson-Moskowitz.
+                  Hệ số tương quan đạt <strong>{auditData?.CORR_WIND_WAVE ? auditData.CORR_WIND_WAVE.toFixed(4) : "0.9009"}</strong>. Khi tốc độ gió tăng, độ cao sóng tăng phi tuyến hoàn toàn chính xác theo cơ chế truyền năng lượng lý thuyết Pierson-Moskowitz.
                 </p>
               </div>
               <div className="bg-slate-950/60 p-5 rounded-xl border border-slate-800/80">
-                <div className="bg-cyan-500/10 w-10 h-10 rounded-lg flex items-center justify-center text-cyan-400 font-bold mb-3">0.23</div>
+                <div className="bg-cyan-500/10 w-10 h-10 rounded-lg flex items-center justify-center text-cyan-400 font-bold mb-3">
+                  {auditData?.CORR_WIND_CURRENT ? auditData.CORR_WIND_CURRENT.toFixed(2) : "0.23"}
+                </div>
                 <h4 className="text-sm font-bold text-slate-200">Liên kết Gió - Hải lưu</h4>
                 <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Hệ số tương quan đạt <strong>0.2292</strong>, phù hợp một cách hoàn hảo với lý thuyết Ekman về truyền động lực của gió lên các dòng chảy tầng mặt đại dương sâu.
+                  Hệ số tương quan đạt <strong>{auditData?.CORR_WIND_CURRENT ? auditData.CORR_WIND_CURRENT.toFixed(4) : "0.2292"}</strong>, phù hợp một cách hoàn hảo với lý thuyết Ekman về truyền động lực của gió lên các dòng chảy tầng mặt đại dương sâu.
                 </p>
               </div>
               <div className="bg-slate-950/60 p-5 rounded-xl border border-slate-800/80">
-                <div className="bg-red-500/10 w-10 h-10 rounded-lg flex items-center justify-center text-red-400 font-bold mb-3">27.9</div>
+                <div className="bg-red-500/10 w-10 h-10 rounded-lg flex items-center justify-center text-red-400 font-bold mb-3">
+                  {auditData?.SST_STRONG ? auditData.SST_STRONG.toFixed(1) : "27.9"}
+                </div>
                 <h4 className="text-sm font-bold text-slate-200">SST Ấm kích hoạt bão</h4>
                 <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                  Nhiệt độ mặt nước biển SST trung bình tại các vùng bão mạnh đạt <strong>27.94°C</strong> so với 27.52°C ở vùng thường, phù hợp với ngưỡng nhiệt 26.5°C kích bão toàn cầu.
+                  Nhiệt độ mặt nước biển SST trung bình tại các vùng bão mạnh đạt <strong>{auditData?.SST_STRONG ? auditData.SST_STRONG.toFixed(2) : "27.94"}°C</strong> so với {auditData?.SST_NORMAL ? auditData.SST_NORMAL.toFixed(2) : "27.52"}°C ở vùng thường, phù hợp với ngưỡng nhiệt 26.5°C kích bão toàn cầu.
                 </p>
               </div>
             </div>

@@ -126,6 +126,37 @@ def reload_models(request: Request):
     else:
         raise HTTPException(status_code=500, detail=f"Failed to reload models: {models_loader.error_msg}")
 
+@app.get("/api/ml/audit")
+def get_ml_audit():
+    """
+    Returns the pre-computed ML model audit results from disk.
+    """
+    import os
+    import json
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    audit_json_path = os.path.join(project_root, "data", "audit_results.json")
+    
+    if not os.path.exists(audit_json_path):
+        # If the file does not exist, run the audit script to generate it
+        try:
+            import subprocess
+            import sys
+            python_exe = sys.executable or "python"
+            script_path = os.path.join(project_root, "src", "audit_model.py")
+            subprocess.run([python_exe, script_path], check=True, timeout=30)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to generate audit results: {e}")
+            
+    if not os.path.exists(audit_json_path):
+        raise HTTPException(status_code=404, detail="Audit results file not found.")
+        
+    try:
+        with open(audit_json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        return data
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read audit results: {e}")
+
 # --- AUTH ENDPOINTS ---
 
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED)

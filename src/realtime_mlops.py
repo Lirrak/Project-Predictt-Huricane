@@ -11,6 +11,9 @@ import cfgrib
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
+# Đảm bảo import được các module khác trong thư mục src
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 # Đảm bảo mã hóa đầu ra là UTF-8 để hiển thị tiếng Việt trên Windows
 if sys.stdout.encoding != 'utf-8':
     try:
@@ -385,6 +388,15 @@ def run_ml_pipeline():
             log_message(f"⚠️ Không thể kích hoạt nạp lại mô hình. Backend phản hồi mã: {resp.status_code}")
     except Exception as e:
         log_message(f"❌ Lỗi khi gửi yêu cầu Hot-Reload đến Backend: {e}")
+        
+    # --- BƯỚC 6: TỰ ĐỘNG CHẠY KIỂM ĐỊNH ĐỂ CẬP NHẬT CHỈ SỐ LÊN FRONTEND ---
+    try:
+        log_message("Đang chạy kiểm định toàn diện để cập nhật chỉ số thực tế lên Dashboard...")
+        from audit_model import run_audit
+        run_audit()
+        log_message("✅ Đã cập nhật tệp kết quả kiểm định data/audit_results.json thành công!")
+    except Exception as e:
+        log_message(f"⚠️ Lỗi khi chạy kiểm định mô hình tự động: {e}")
         
     return True
 

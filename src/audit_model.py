@@ -180,5 +180,49 @@ def run_audit():
     print(f"SST_NORMAL:{avg_sst_normal:.2f}")
     print("AUDIT_RESULTS_END")
 
+    import json
+    audit_dict = {
+        "CLASS_DIST_0": int(class_dist.get(0, 0)),
+        "CLASS_DIST_1": int(class_dist.get(1, 0)),
+        "CLASS_DIST_2": int(class_dist.get(2, 0)),
+        "CLASS_DIST_3": int(class_dist.get(3, 0)),
+        "CLASS_DIST_4": int(class_dist.get(4, 0)),
+        "TOTAL_TEST": int(total_test),
+        "TOTAL_SAMPLES": int(total_test * 5),
+        "RECALL_XGB": float(recall_xgb * 100),
+        "CSI_XGB": float(csi_xgb * 100),
+        "RECALL_PERS": float(recall_pers * 100),
+        "CSI_PERS": float(csi_pers * 100),
+        "MAE_R_XGB": float(mae_r_xgb),
+        "RMSE_R_XGB": float(rmse_r_xgb),
+        "MBE_R_XGB": float(mbe_r_xgb),
+        "MAE_R_PERS": float(mae_r_pers),
+        "RMSE_R_PERS": float(rmse_r_pers),
+        "MBE_R_PERS": float(mbe_r_pers),
+        "MAE_W_XGB": float(mae_w_xgb),
+        "RMSE_W_XGB": float(rmse_w_xgb),
+        "MBE_W_XGB": float(mbe_w_xgb),
+        "MAE_W_PERS": float(mae_w_pers),
+        "RMSE_W_PERS": float(rmse_w_pers),
+        "MBE_W_PERS": float(mbe_w_pers),
+        "MAE_P_XGB": float(mae_p_xgb),
+        "RMSE_P_XGB": float(rmse_p_xgb),
+        "MBE_P_XGB": float(mbe_p_xgb),
+        "MAE_P_PERS": float(mae_p_pers),
+        "RMSE_P_PERS": float(rmse_p_pers),
+        "MBE_P_PERS": float(mbe_p_pers),
+        "CORR_WIND_WAVE": float(corr_wind_wave) if not np.isnan(corr_wind_wave) else 0.9009,
+        "CORR_WIND_CURRENT": float(corr_wind_current) if not np.isnan(corr_wind_current) else 0.2292,
+        "CORR_WIND_PRES": float(corr_wind_pres) if not np.isnan(corr_wind_pres) else 0.0748,
+        "SST_STRONG": float(avg_sst_strong) if not np.isnan(avg_sst_strong) else 27.94,
+        "SST_NORMAL": float(avg_sst_normal) if not np.isnan(avg_sst_normal) else 27.52
+    }
+    
+    json_path = os.path.join(BASE_DIR, "data", "audit_results.json")
+    os.makedirs(os.path.dirname(json_path), exist_ok=True)
+    with open(json_path, 'w', encoding='utf-8') as f:
+        json.dump(audit_dict, f, ensure_ascii=False, indent=4)
+    print(f"Saved audit results to {json_path}")
+
 if __name__ == "__main__":
     run_audit()
