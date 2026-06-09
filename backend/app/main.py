@@ -109,6 +109,23 @@ def read_root():
         "status": "active"
     }
 
+@app.post("/api/ml/reload")
+def reload_models(request: Request):
+    """
+    Triggers an on-the-fly hot reload of the XGBoost ML models from disk.
+    Only accessible from localhost for security reasons.
+    """
+    client_host = request.client.host
+    if client_host not in ["127.0.0.1", "localhost", "::1"]:
+        raise HTTPException(status_code=403, detail="Forbidden: Only localhost can trigger model reload.")
+    
+    models_loader.is_loaded = False
+    success = models_loader.load_models()
+    if success:
+        return {"status": "success", "message": "ML models hot-reloaded successfully on-the-fly!"}
+    else:
+        raise HTTPException(status_code=500, detail=f"Failed to reload models: {models_loader.error_msg}")
+
 # --- AUTH ENDPOINTS ---
 
 @app.post("/api/auth/register", status_code=status.HTTP_201_CREATED)

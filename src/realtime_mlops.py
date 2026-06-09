@@ -24,7 +24,12 @@ DOWNLOAD_DIR = os.path.join(BASE_DIR, "data", "gfs_data")
 EXTRACTED_CSV = os.path.join(BASE_DIR, "data", "extracted_weather.csv")
 HISTORICAL_CSV = os.path.join(BASE_DIR, "data", "historical_storm_weather.csv")
 FEATURES_CSV = os.path.join(BASE_DIR, "data", "engineered_features.csv")
-MODEL_JSON = os.path.join(BASE_DIR, "models", "xgboost_rain_model.json")
+
+# 3 file mô hình tương ứng với 3 chỉ số dự báo
+MODEL_JSON_RAIN = os.path.join(BASE_DIR, "models", "xgboost_rain_model.json")
+MODEL_JSON_WIND = os.path.join(BASE_DIR, "models", "xgboost_wind_model.json")
+MODEL_JSON_PRES = os.path.join(BASE_DIR, "models", "xgboost_pres_model.json")
+
 LOG_FILE = os.path.join(BASE_DIR, "logs", "mlops_training_log.txt")
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -73,6 +78,40 @@ STATIONS = {
     "Luzon Strait": {"lat": 20.00, "lon": 121.00}
 }
 
+# --- Custom Loss Functions (Asymmetric Loss) áp đặt trọng số phạt lỗi underestimation cao gấp 5 lần ---
+def apcp_asymmetric_obj(y_true, y_pred):
+    """Custom Loss cho Lượng mưa (APCP): Phạt dự đoán thiếu gấp 5 lần khi trời mưa to."""
+    if not isinstance(y_true, np.ndarray) and hasattr(y_true, 'get_label'):
+        y_pred, dtrain = y_true, y_pred
+        y_true = dtrain.get_label()
+    residual = y_pred - y_true
+    weight = np.where((residual < 0) & (y_true > 2.0), 5.0, 1.0)
+    grad = residual * weight
+    hess = weight
+    return grad, hess
+
+def wind_asymmetric_obj(y_true, y_pred):
+    """Custom Loss cho Tốc độ gió: Phạt dự đoán thiếu gấp 5 lần khi gió mạnh bão."""
+    if not isinstance(y_true, np.ndarray) and hasattr(y_true, 'get_label'):
+        y_pred, dtrain = y_true, y_pred
+        y_true = dtrain.get_label()
+    residual = y_pred - y_true
+    weight = np.where((residual < 0) & (y_true > 15.0), 5.0, 1.0)
+    grad = residual * weight
+    hess = weight
+    return grad, hess
+
+def pres_asymmetric_obj(y_true, y_pred):
+    """Custom Loss cho Áp suất (PRES): Phạt dự báo áp quá cao (underestimate bão) gấp 5 lần."""
+    if not isinstance(y_true, np.ndarray) and hasattr(y_true, 'get_label'):
+        y_pred, dtrain = y_true, y_pred
+        y_true = dtrain.get_label()
+    residual = y_pred - y_true
+    weight = np.where((residual > 0) & (y_true < 100000.0), 5.0, 1.0)
+    grad = residual * weight
+    hess = weight
+    return grad, hess
+
 def log_message(message):
     """Ghi log kèm theo timestamp ra màn hình và file log."""
     local_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -117,7 +156,7 @@ def download_grib_file(date_str, cycle_str):
         return None
 
 def fetch_multi_location_marine_for_date(date_str):
-    """Tải dữ liệu sóng và hải lưu cho cả 8 trạm tại một ngày cụ thể."""
+    """Tải dữ liệu sóng và hải lưu cho cả 37 trạm tại một ngày cụ thể."""
     lats = ",".join([str(STATIONS[name]["lat"]) for name in STATIONS])
     lons = ",".join([str(STATIONS[name]["lon"]) for name in STATIONS])
     url = f"https://marine-api.open-meteo.com/v1/marine?latitude={lats}&longitude={lons}&start_date={date_str}&end_date={date_str}&hourly=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature"
@@ -130,7 +169,7 @@ def fetch_multi_location_marine_for_date(date_str):
     return None
 
 def extract_all_stations_from_grib(file_path):
-    """Trích xuất biến khí quyển cho cả 8 trạm từ tệp GRIB2."""
+    """Trích xuất biến khí quyển cho cả 37 trạm từ tệp GRIB2."""
     try:
         datasets = cfgrib.open_datasets(file_path)
     except Exception as e:
@@ -196,10 +235,10 @@ def extract_all_stations_from_grib(file_path):
     return records
 
 def run_ml_pipeline():
-    """Chạy toàn bộ pipeline MLOps kết hợp Khí tượng - Hải dương 38 đặc trưng."""
-    log_message("BẮT ĐẦU CHẠY PIPELINE HUẤN LUYỆN MÔ HÌNH HẢI DƯƠNG - KHÍ TƯỢNG ĐA TRẠM...")
+    """Chạy toàn bộ pipeline MLOps tối ưu: Cửa sổ trượt 30 ngày + Lọc mẫu bão lịch sử, huấn luyện đa mục tiêu XGBoost giới hạn tài nguyên."""
+    log_message("BẮT ĐẦU CHẠY PIPELINE HUẤN LUYỆN MÔ HÌNH HẢI DƯƠNG - KHÍ TƯỢNG ĐA TRẠM TỐI ƯU...")
     
-    # 1. Đọc dữ liệu thực tế GFS đa trạm
+    # --- BƯỚC 1: ĐỌC VÀ LỌC CỬA SỔ TRƯỢT 30 NGÀY DỮ LIỆU THỰC TẾ (Moving Window - Phương án 4) ---
     if not os.path.exists(EXTRACTED_CSV):
         log_message("Lỗi: Không tìm thấy tệp tin extracted_weather.csv!")
         return False
@@ -207,29 +246,40 @@ def run_ml_pipeline():
     df_real = pd.read_csv(EXTRACTED_CSV)
     df_real['timestamp'] = pd.to_datetime(df_real['timestamp'])
     
+    # Chỉ giữ lại dữ liệu thực tế 30 ngày gần nhất để tiết kiệm bộ nhớ RAM cực lớn cho Pi
+    cutoff_date = df_real['timestamp'].max() - pd.Timedelta(days=30)
+    df_real_filtered = df_real[df_real['timestamp'] >= cutoff_date].copy()
+    
     core_cols = ['timestamp', 'station_name', 'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'PRES', 
                  'WAVE_H', 'WAVE_DIR', 'WAVE_P', 'CURRENT_VEL', 'CURRENT_DIR', 'SST', 'storm_severity', 'APCP']
-    df_real = df_real[core_cols]
+    df_real_filtered = df_real_filtered[core_cols]
 
-    # 2. Đọc dữ liệu lịch sử bão đa trạm
+    # --- BƯỚC 2: LỌC MẪU DỮ LIỆU BÃO LỊCH SỬ TINH GỌN (Storm Sampling - Phương án 4) ---
     if os.path.exists(HISTORICAL_CSV):
         df_hist = pd.read_csv(HISTORICAL_CSV)
         df_hist['timestamp'] = pd.to_datetime(df_hist['timestamp'])
         df_hist = df_hist[core_cols]
-        df_combined = pd.concat([df_real, df_hist], ignore_index=True)
+        
+        # Chỉ giữ lại các mẫu thực sự có bão/áp thấp (storm_severity > 0) và 10% ngẫu nhiên mẫu biển lặng làm phản ví dụ
+        df_storms = df_hist[df_hist['storm_severity'] > 0]
+        df_normals_sample = df_hist[df_hist['storm_severity'] == 0].sample(frac=0.10, random_state=42)
+        df_hist_sampled = pd.concat([df_storms, df_normals_sample], ignore_index=True)
+        
+        # Hợp nhất dữ liệu
+        df_combined = pd.concat([df_real_filtered, df_hist_sampled], ignore_index=True)
+        log_message(f"Hợp nhất dữ liệu thành công: {len(df_real_filtered)} mẫu thực tế (30 ngày gần đây) và {len(df_hist_sampled)} mẫu bão lịch sử đã lọc.")
     else:
-        df_combined = df_real.copy()
+        df_combined = df_real_filtered.copy()
 
-    # 3. Thực hiện Feature Engineering đa trạm theo phân đoạn độc lập bằng phương pháp vector hóa siêu nhanh
+    # --- BƯỚC 3: THỰC HIỆN FEATURE ENGINEERING ĐẦY ĐỦ 45 ĐẶC TRƯNG ---
     df_combined = df_combined.sort_values(by=['station_name', 'timestamp']).reset_index(drop=True)
     df_combined['time_diff'] = df_combined.groupby('station_name')['timestamp'].diff()
     df_combined['is_new_period'] = (df_combined['time_diff'] > pd.Timedelta(hours=12)).fillna(False)
     df_combined['period_id'] = df_combined.groupby('station_name')['is_new_period'].cumsum()
     
-    # Tính trễ cho cả Chiều cao sóng và Tốc độ hải lưu
-    features_to_lag = ['TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'APCP', 'WAVE_H', 'CURRENT_VEL']
+    # 10 biến cốt lõi để tính Lag
+    features_to_lag = ['TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'APCP', 'WAVE_H', 'CURRENT_VEL', 'SST']
     
-    # Sử dụng groupby trực tiếp và vectorized shift/transform để tăng tốc độ xử lý gấp 100 lần
     grouped = df_combined.groupby(['station_name', 'period_id'])
     for col in features_to_lag:
         df_combined[f'{col}_lag1'] = grouped[col].shift(1)
@@ -240,60 +290,121 @@ def run_ml_pipeline():
     
     df_combined['hour'] = df_combined['timestamp'].dt.hour
     df_combined['month'] = df_combined['timestamp'].dt.month
+    
+    # Tính các biến đặc trưng vật lý khí quyển - hải văn học nâng cao
+    # 1. MPI (Maximum Potential Intensity)
+    sst_c = df_combined['SST'] - 273.15
+    e_s = 6.112 * np.exp(17.67 * sst_c / (sst_c + 243.5))
+    temp_diff_ratio = (df_combined['SST'] - df_combined['TMP']).clip(lower=0.0) / df_combined['TMP'].clip(lower=200.0)
+    df_combined['MPI'] = 70.0 * np.sqrt(temp_diff_ratio * e_s)
+    
+    # 2. Wind Shear (Độ đứt gió)
+    WS = np.sqrt(df_combined['UGRD']**2 + df_combined['VGRD']**2)
+    WS_lag1 = np.sqrt(df_combined['UGRD_lag1']**2 + df_combined['VGRD_lag1']**2)
+    WS_lag2 = np.sqrt(df_combined['UGRD_lag2']**2 + df_combined['VGRD_lag2']**2)
+    
+    df_combined['wind_shear_mag_lag1'] = np.abs(WS - WS_lag1)
+    df_combined['wind_shear_mag_lag2'] = np.abs(WS - WS_lag2)
+    
+    df_combined['wind_shear_vec_lag1'] = np.sqrt((df_combined['UGRD'] - df_combined['UGRD_lag1'])**2 + (df_combined['VGRD'] - df_combined['VGRD_lag1'])**2)
+    df_combined['wind_shear_vec_lag2'] = np.sqrt((df_combined['UGRD'] - df_combined['UGRD_lag2'])**2 + (df_combined['VGRD'] - df_combined['VGRD_lag2'])**2)
+    
+    # 3. Climatology Prior
+    default_priors = {1: 0.05, 2: 0.02, 3: 0.02, 4: 0.05, 5: 0.1, 6: 0.2, 
+                      7: 0.4, 8: 0.5, 9: 0.6, 10: 0.5, 11: 0.3, 12: 0.1}
+    df_combined['climatology_prior'] = df_combined['month'].map(default_priors).fillna(0.2)
+    
     df_combined = df_combined.drop(columns=['period_id', 'time_diff', 'is_new_period'])
     df_clean = df_combined.dropna().reset_index(drop=True)
     
     df_clean.to_csv(FEATURES_CSV, index=False)
+    log_message(f"Tính toán xong 45 đặc trưng. Tổng số dòng dữ liệu sạch đưa vào train: {len(df_clean)}")
     
-    # 4. Huấn luyện XGBoost sử dụng đa nhân CPU (n_jobs=-1) để hoàn thành trong vài giây
-    target_col = 'APCP'
-    feature_cols = [col for col in df_clean.columns if col not in [target_col, 'timestamp', 'station_name']]
+    # Tính tốc độ gió WIND_SPEED để làm biến mục tiêu
+    df_clean['WIND_SPEED'] = np.sqrt(df_clean['UGRD']**2 + df_clean['VGRD']**2)
+    
+    # Xác định các cột đầu vào
+    target_cols = ['APCP', 'WIND_SPEED', 'PRES']
+    feature_cols = [col for col in df_clean.columns if col not in target_cols + ['timestamp', 'station_name']]
 
     X = df_clean[feature_cols]
-    y = df_clean[target_col]
-
-    split_idx = int(len(X) * 0.8)
-    X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
-    y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
-
-    model = XGBRegressor(
-        n_estimators=150, learning_rate=0.03, max_depth=7, subsample=0.8, colsample_bytree=0.9, n_jobs=-1, random_state=42
+    
+    # Chia tập Train (80%) và Test (20%) ngẫu nhiên
+    from sklearn.model_selection import train_test_split
+    X_train, X_test, y_train_full, y_test_full = train_test_split(X, df_clean[target_cols], test_size=0.2, random_state=42, shuffle=True)
+    
+    # --- BƯỚC 4: HUẤN LUYỆN ĐA MỤC TIÊU VỚI GIỚI HẠN TÀI NGUYÊN (XGBoost n_jobs=2 - Phương án 6) ---
+    log_message("\n--- KHỞI CHẠY HUẤN LUYỆN ĐA MỤC TIÊU CHO RASPBERRY PI (MAX 2 CPU) ---")
+    
+    # 1. Dự báo APCP (Mưa)
+    log_message("[1/3] Đang huấn luyện mô hình dự báo lượng mưa APCP...")
+    model_apcp = XGBRegressor(
+        n_estimators=100, learning_rate=0.03, max_depth=6, subsample=0.8, colsample_bytree=0.9, n_jobs=2, random_state=42, objective=apcp_asymmetric_obj
     )
-    model.fit(X_train, y_train, eval_set=[(X_test, y_test)], verbose=False)
+    model_apcp.fit(X_train, y_train_full['APCP'], eval_set=[(X_test, y_test_full['APCP'])], verbose=False)
+    y_pred_apcp = model_apcp.predict(X_test)
+    mae_apcp = mean_absolute_error(y_test_full['APCP'], y_pred_apcp)
     
-    # Đánh giá sai số
-    y_pred = model.predict(X_test)
-    mae = mean_absolute_error(y_test, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    # 2. Dự báo WIND_SPEED (Gió)
+    log_message("[2/3] Đang huấn luyện mô hình dự báo tốc độ gió WIND_SPEED...")
+    model_wind = XGBRegressor(
+        n_estimators=100, learning_rate=0.03, max_depth=6, subsample=0.8, colsample_bytree=0.9, n_jobs=2, random_state=42, objective=wind_asymmetric_obj
+    )
+    model_wind.fit(X_train, y_train_full['WIND_SPEED'], eval_set=[(X_test, y_test_full['WIND_SPEED'])], verbose=False)
+    y_pred_wind = model_wind.predict(X_test)
+    mae_wind = mean_absolute_error(y_test_full['WIND_SPEED'], y_pred_wind)
+
+    # 3. Dự báo PRES (Khí áp)
+    log_message("[3/3] Đang huấn luyện mô hình dự báo khí áp bề mặt PRES...")
+    model_pres = XGBRegressor(
+        n_estimators=100, learning_rate=0.03, max_depth=6, subsample=0.8, colsample_bytree=0.9, n_jobs=2, random_state=42, objective=pres_asymmetric_obj
+    )
+    model_pres.fit(X_train, y_train_full['PRES'], eval_set=[(X_test, y_test_full['PRES'])], verbose=False)
+    y_pred_pres = model_pres.predict(X_test)
+    mae_pres = mean_absolute_error(y_test_full['PRES'], y_pred_pres)
     
-    # Xuất mô hình
-    model.save_model(MODEL_JSON)
+    # Xuất tất cả các mô hình thành file JSON
+    model_apcp.save_model(MODEL_JSON_RAIN)
+    model_wind.save_model(MODEL_JSON_WIND)
+    model_pres.save_model(MODEL_JSON_PRES)
     
-    log_message(f"--- KẾT QUẢ HUẤN LUYỆN KHÍ TƯỢNG - HẢI DƯƠNG ---")
+    log_message(f"--- KẾT QUẢ HUẤN LUYỆN KHÍ TƯỢNG - HẢI DƯƠNG TRÊN PI CORES ---")
     log_message(f"  Số mẫu dữ liệu huấn luyện: {len(X_train)} | Tập kiểm thử: {len(X_test)}")
-    log_message(f"  Sai số MAE: {mae:.4f} mm")
-    log_message(f"  Sai số RMSE: {rmse:.4f} mm")
-    log_message(f"  Mô hình 38 đặc trưng đã được cập nhật thành công tại: {MODEL_JSON}")
+    log_message(f"  Sai số MAE Lượng mưa: {mae_apcp:.4f} mm")
+    log_message(f"  Sai số MAE Tốc độ gió: {mae_wind:.4f} m/s")
+    log_message(f"  Sai số MAE Khí áp: {mae_pres:.2f} Pa")
+    log_message("  Đã lưu 3 tệp mô hình mới thành công tại thư mục models/!")
+    
+    # --- BƯỚC 5: TỰ ĐỘNG GỬI YÊU CẦU NẠP MÔ HÌNH LÊN FASTAPI BACKEND (Zero-Downtime Hot-Reload) ---
+    try:
+        reload_url = "http://localhost:8000/api/ml/reload"
+        resp = requests.post(reload_url, timeout=5)
+        if resp.status_code == 200:
+            log_message("✅ Đã kích hoạt nạp lại mô hình tĩnh trực tiếp trên FastAPI Backend thành công!")
+        else:
+            log_message(f"⚠️ Không thể kích hoạt nạp lại mô hình. Backend phản hồi mã: {resp.status_code}")
+    except Exception as e:
+        log_message(f"❌ Lỗi khi gửi yêu cầu Hot-Reload đến Backend: {e}")
+        
     return True
 
 def main():
     log_message("=== KHỞI CHẠY HỆ THỐNG MLOPS KHÍ TƯỢNG - HẢI DƯƠNG ĐA TRẠM THỜI GIAN THỰC ===")
-    log_message(f"Hệ thống sẽ chạy liên tục từ bây giờ cho đến 12:00 PM trưa ngày 05/06/2026.")
+    log_message("Chế độ tối ưu hóa cực hạn cho Raspberry Pi 3 B+ (Tự động nạp mô hình không đổi link Cloudflare)")
     
-    target_end_time = datetime.datetime(2026, 6, 5, 12, 0, 0)
-    
+    # Huấn luyện một lần khi khởi chạy hệ thống để kiểm tra và xác nhận mọi thứ hoạt động tốt
+    try:
+        run_ml_pipeline()
+    except Exception as e:
+        log_message(f"Lỗi khi huấn luyện ban đầu: {e}")
+        
+    last_trained_date = datetime.date.today()
     iteration = 1
     
     while True:
         current_time = get_vietnam_time()
-        if current_time >= target_end_time:
-            log_message(f"Thời gian hiện tại ({current_time.strftime('%Y-%m-%d %H:%M:%S')}) đã vượt quá mốc 12:00 PM. Kết thúc quá trình huấn luyện.")
-            break
-            
-        remaining_time = target_end_time - current_time
-        log_message(f"\n[Chu kỳ #{iteration}] Thời gian: {current_time.strftime('%Y-%m-%d %H:%M:%S')} (Còn lại: {remaining_time})")
         
-        # 1. Quét tìm các chu kỳ GFS khả dụng gần đây từ NOAA (UTC)
+        # Quét tìm các chu kỳ GFS khả dụng gần đây từ NOAA (UTC) để tải và làm giàu database
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         current_utc_hour = now_utc.hour
         latest_cycle_hour = (current_utc_hour // 6) * 6
@@ -319,7 +430,7 @@ def main():
                     station_records = extract_all_stations_from_grib(downloaded_path)
                     
                     if station_records:
-                        # 2. Đồng bộ hóa sóng biển và hải lưu trực tiếp tại ngày này
+                        # Đồng bộ hóa sóng biển và hải lưu trực tiếp tại ngày này từ Open-Meteo
                         marine_json = fetch_multi_location_marine_for_date(date_str)
                         
                         df_real = pd.read_csv(EXTRACTED_CSV)
@@ -356,7 +467,7 @@ def main():
                             elif 24.5 <= wind_speed_ms < 32.7:
                                 rec['storm_severity'] = 3  # Bão mạnh
                             elif 17.2 <= wind_speed_ms < 24.5:
-                                rec['storm_severity'] = 2  # Bão thường / Tropical storm
+                                rec['storm_severity'] = 2  # Bão thường
                             elif 10.8 <= wind_speed_ms < 17.2:
                                 rec['storm_severity'] = 1  # Áp thấp nhiệt đới
                             else:
@@ -418,28 +529,21 @@ def main():
                         df_merged = df_merged.sort_values(by=['station_name', 'timestamp']).reset_index(drop=True)
                         
                         df_merged.to_csv(EXTRACTED_CSV, index=False)
-                        log_message(f"Đã thêm, đồng bộ hải dương và hợp nhất thành công dữ liệu đa trạm của chu kỳ {date_str}_{cycle_str}!")
+                        log_message(f"Đã tải, đồng bộ và hợp nhất thành công dữ liệu đa trạm chu kỳ GFS {date_str}_{cycle_str}!")
                         new_data_extracted = True
         
-        if new_data_extracted or iteration == 1:
+        # --- BƯỚC 6: KIỂM TRA ĐIỀU KIỆN KÍCH HOẠT HUẤN LUYỆN BAN ĐÊM (Phương án 6 - 3:00 AM) ---
+        # Chỉ chạy huấn luyện nếu thời gian hiện tại là 3 giờ sáng (3:00 AM - 3:59 AM) và chưa chạy huấn luyện nào trong hôm nay
+        if current_time.hour == 3 and current_time.date() != last_trained_date:
+            log_message(f"⏰ Đã đến mốc 3:00 AM ban đêm. Kích hoạt huấn luyện MLOps hàng ngày tự động...")
             try:
                 run_ml_pipeline()
+                last_trained_date = current_time.date()
             except Exception as e:
-                log_message(f"Lỗi khi huấn luyện lại mô hình đa trạm: {e}")
-        else:
-            log_message("Không phát hiện thêm chu kỳ dữ liệu GFS mới từ NOAA. Bỏ qua huấn luyện chu kỳ này.")
-            
-        log_message("Hệ thống chuyển sang chế độ ngủ trong 15 phút...")
-        sys.stdout.flush()
-        
-        sleep_duration = 900
-        sleep_step = 15
-        steps = sleep_duration // sleep_step
-        for _ in range(steps):
-            time.sleep(sleep_step)
-            if get_vietnam_time() >= target_end_time:
-                break
+                log_message(f"Lỗi khi huấn luyện lại mô hình ban đêm: {e}")
                 
+        # Ngủ 15 phút trước chu kỳ quét dữ liệu NOAA tiếp theo
+        time.sleep(900)
         iteration += 1
 
 if __name__ == "__main__":
