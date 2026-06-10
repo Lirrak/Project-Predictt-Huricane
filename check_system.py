@@ -161,6 +161,7 @@ def main():
     services = [
         "hurricane-backend.service",
         "hurricane-frontend.service",
+        "hurricane-mlops.service",
         "nginx.service",
         "cloudflared-quick.service"
     ]
