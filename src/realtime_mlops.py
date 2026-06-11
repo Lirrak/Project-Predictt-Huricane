@@ -274,14 +274,14 @@ def run_ml_pipeline():
     else:
         df_combined = df_real_filtered.copy()
 
-    # --- BƯỚC 3: THỰC HIỆN FEATURE ENGINEERING ĐẦY ĐỦ 45 ĐẶC TRƯNG ---
+    # --- BƯỚC 3: THỰC HIỆN FEATURE ENGINEERING ĐẦY ĐỦ 54 ĐẶC TRƯNG ---
     df_combined = df_combined.sort_values(by=['station_name', 'timestamp']).reset_index(drop=True)
     df_combined['time_diff'] = df_combined.groupby('station_name')['timestamp'].diff()
     df_combined['is_new_period'] = (df_combined['time_diff'] > pd.Timedelta(hours=12)).fillna(False)
     df_combined['period_id'] = df_combined.groupby('station_name')['is_new_period'].cumsum()
     
-    # 10 biến cốt lõi để tính Lag
-    features_to_lag = ['TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'APCP', 'WAVE_H', 'CURRENT_VEL', 'SST']
+    # 11 biến cốt lõi để tính Lag
+    features_to_lag = ['TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'APCP', 'WAVE_H', 'CURRENT_VEL', 'SST', 'PRES']
     
     grouped = df_combined.groupby(['station_name', 'period_id'])
     for col in features_to_lag:
@@ -290,6 +290,19 @@ def run_ml_pipeline():
         
     df_combined['RH_rolling_mean_12h'] = grouped['RH'].transform(lambda x: x.rolling(window=4).mean())
     df_combined['TMP_rolling_mean_12h'] = grouped['TMP'].transform(lambda x: x.rolling(window=4).mean())
+    df_combined['PRES_rolling_mean_12h'] = grouped['PRES'].transform(lambda x: x.rolling(window=4).mean())
+    
+    # Tính toán biến Sức gió tức thời và trễ
+    df_combined['WIND_SPEED_temp'] = np.sqrt(df_combined['UGRD']**2 + df_combined['VGRD']**2)
+    df_combined['WIND_SPEED_lag1'] = np.sqrt(df_combined['UGRD_lag1']**2 + df_combined['VGRD_lag1']**2)
+    df_combined['WIND_SPEED_lag2'] = np.sqrt(df_combined['UGRD_lag2']**2 + df_combined['VGRD_lag2']**2)
+    
+    df_combined['WIND_rolling_mean_12h'] = grouped['WIND_SPEED_temp'].transform(lambda x: x.rolling(window=4).mean())
+    df_combined['WIND_rolling_max_12h'] = grouped['WIND_SPEED_temp'].transform(lambda x: x.rolling(window=4).max())
+    
+    df_combined['PRES_change_6h'] = df_combined['PRES'] - df_combined['PRES_lag2']
+    df_combined['WIND_change_6h'] = df_combined['WIND_SPEED_temp'] - df_combined['WIND_SPEED_lag2']
+    df_combined.drop(columns=['WIND_SPEED_temp'], inplace=True, errors='ignore')
     
     df_combined['hour'] = df_combined['timestamp'].dt.hour
     df_combined['month'] = df_combined['timestamp'].dt.month
@@ -321,16 +334,26 @@ def run_ml_pipeline():
     df_clean = df_combined.dropna().reset_index(drop=True)
     
     df_clean.to_csv(FEATURES_CSV, index=False)
-    log_message(f"Tính toán xong 45 đặc trưng. Tổng số dòng dữ liệu sạch đưa vào train: {len(df_clean)}")
+    log_message(f"Tính toán xong 54 đặc trưng. Tổng số dòng dữ liệu sạch đưa vào train: {len(df_clean)}")
     
     # Tính tốc độ gió WIND_SPEED để làm biến mục tiêu
     df_clean['WIND_SPEED'] = np.sqrt(df_clean['UGRD']**2 + df_clean['VGRD']**2)
     
-    # Xác định các cột đầu vào
+    # Xác định các cột đầu vào bằng danh sách 54 đặc trưng khí quyển - hải dương học tối ưu
+    FEATURE_COLS_54 = [
+        'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'WAVE_H', 'WAVE_DIR', 'WAVE_P',
+        'CURRENT_VEL', 'CURRENT_DIR', 'SST', 'storm_severity',
+        'TMP_lag1', 'TMP_lag2', 'RH_lag1', 'RH_lag2', 'UGRD_lag1', 'UGRD_lag2', 
+        'VGRD_lag1', 'VGRD_lag2', 'CAPE_lag1', 'CAPE_lag2', 'PWAT_lag1', 'PWAT_lag2', 
+        'APCP_lag1', 'APCP_lag2', 'WAVE_H_lag1', 'WAVE_H_lag2', 'CURRENT_VEL_lag1', 'CURRENT_VEL_lag2',
+        'SST_lag1', 'SST_lag2', 'PRES_lag1', 'PRES_lag2', 'RH_rolling_mean_12h', 'TMP_rolling_mean_12h',
+        'PRES_rolling_mean_12h', 'WIND_SPEED_lag1', 'WIND_SPEED_lag2', 'WIND_rolling_mean_12h', 'WIND_rolling_max_12h',
+        'PRES_change_6h', 'WIND_change_6h', 'hour', 'month',
+        'MPI', 'wind_shear_mag_lag1', 'wind_shear_mag_lag2', 'wind_shear_vec_lag1', 'wind_shear_vec_lag2', 'climatology_prior'
+    ]
+    
     target_cols = ['APCP', 'WIND_SPEED', 'PRES']
-    feature_cols = [col for col in df_clean.columns if col not in target_cols + ['timestamp', 'station_name']]
-
-    X = df_clean[feature_cols]
+    X = df_clean[FEATURE_COLS_54]
     
     # Chia tập Train (80%) và Test (20%) ngẫu nhiên
     from sklearn.model_selection import train_test_split

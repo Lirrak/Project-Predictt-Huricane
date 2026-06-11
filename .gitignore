@@ -1,6 +1,5 @@
 # Ignore GRIB2 meteorological data files and heavy datasets (local caches)
 data/historical_storm_weather.csv
-data/extracted_weather.csv
 data/engineered_features.csv
 data/temp_yearly_data/
 data/gfs_data/

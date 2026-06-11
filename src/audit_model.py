@@ -44,7 +44,17 @@ def run_audit():
     
     # Target variables
     target_cols = ['APCP', 'WIND_SPEED', 'PRES']
-    feature_cols = [col for col in df.columns if col not in target_cols + ['timestamp', 'station_name']]
+    FEATURE_COLS_54 = [
+        'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'WAVE_H', 'WAVE_DIR', 'WAVE_P',
+        'CURRENT_VEL', 'CURRENT_DIR', 'SST', 'storm_severity',
+        'TMP_lag1', 'TMP_lag2', 'RH_lag1', 'RH_lag2', 'UGRD_lag1', 'UGRD_lag2', 
+        'VGRD_lag1', 'VGRD_lag2', 'CAPE_lag1', 'CAPE_lag2', 'PWAT_lag1', 'PWAT_lag2', 
+        'APCP_lag1', 'APCP_lag2', 'WAVE_H_lag1', 'WAVE_H_lag2', 'CURRENT_VEL_lag1', 'CURRENT_VEL_lag2',
+        'SST_lag1', 'SST_lag2', 'PRES_lag1', 'PRES_lag2', 'RH_rolling_mean_12h', 'TMP_rolling_mean_12h',
+        'PRES_rolling_mean_12h', 'WIND_SPEED_lag1', 'WIND_SPEED_lag2', 'WIND_rolling_mean_12h', 'WIND_rolling_max_12h',
+        'PRES_change_6h', 'WIND_change_6h', 'hour', 'month',
+        'MPI', 'wind_shear_mag_lag1', 'wind_shear_mag_lag2', 'wind_shear_vec_lag1', 'wind_shear_vec_lag2', 'climatology_prior'
+    ]
     
     # 5. Chia ngẫu nhiên tập dữ liệu (Random Shuffling Split: 80% Train, 20% Test) không theo thứ tự thời gian
     from sklearn.model_selection import train_test_split
@@ -52,7 +62,7 @@ def run_audit():
     df_train = df_train.copy()
     df_test = df_test.copy()
     
-    X_test = df_test[feature_cols]
+    X_test = df_test[FEATURE_COLS_54]
     
     # Load Models
     model_rain = XGBRegressor()

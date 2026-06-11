@@ -258,6 +258,7 @@ def generate_prediction_input(station_name, coords, df_raw, simulated_storm_leve
     
     rh_rolling = np.mean([row_now['RH'], row_lag1['RH'], row_lag2['RH'], row_lag3['RH']])
     tmp_rolling = np.mean([row_now['TMP'], row_lag1['TMP'], row_lag2['TMP'], row_lag3['TMP']])
+    pres_rolling = np.mean([row_now['PRES'], row_lag1['PRES'], row_lag2['PRES'], row_lag3['PRES']])
     
     # 1. Maximum Potential Intensity (MPI)
     sst_c = row_now['SST'] - 273.15
@@ -269,6 +270,7 @@ def generate_prediction_input(station_name, coords, df_raw, simulated_storm_leve
     WS_now = np.sqrt(row_now['UGRD']**2 + row_now['VGRD']**2)
     WS_lag1 = np.sqrt(row_lag1['UGRD']**2 + row_lag1['VGRD']**2)
     WS_lag2 = np.sqrt(row_lag2['UGRD']**2 + row_lag2['VGRD']**2)
+    WS_lag3 = np.sqrt(row_lag3['UGRD']**2 + row_lag3['VGRD']**2)
     
     wind_shear_mag_lag1 = np.abs(WS_now - WS_lag1)
     wind_shear_mag_lag2 = np.abs(WS_now - WS_lag2)
@@ -276,7 +278,13 @@ def generate_prediction_input(station_name, coords, df_raw, simulated_storm_leve
     wind_shear_vec_lag1 = np.sqrt((row_now['UGRD'] - row_lag1['UGRD'])**2 + (row_now['VGRD'] - row_lag1['VGRD'])**2)
     wind_shear_vec_lag2 = np.sqrt((row_now['UGRD'] - row_lag2['UGRD'])**2 + (row_now['VGRD'] - row_lag2['VGRD'])**2)
     
-    # 3. Climatology Prior
+    # 3. Wind rolling features and changes
+    wind_rolling_mean = np.mean([WS_now, WS_lag1, WS_lag2, WS_lag3])
+    wind_rolling_max = np.max([WS_now, WS_lag1, WS_lag2, WS_lag3])
+    pres_change = row_now['PRES'] - row_lag2['PRES']
+    wind_change = WS_now - WS_lag2
+    
+    # 4. Climatology Prior
     current_month = row_now['time'].month
     lat_round = round(coords['lat'], 1)
     lon_round = round(coords['lon'], 1)
@@ -291,8 +299,8 @@ def generate_prediction_input(station_name, coords, df_raw, simulated_storm_leve
     feat_dict = {
         'latitude': coords['lat'], 'longitude': coords['lon'],
         'TMP': row_now['TMP'], 'RH': row_now['RH'], 'UGRD': row_now['UGRD'], 'VGRD': row_now['VGRD'],
-        'CAPE': row_now['CAPE'], 'PWAT': row_now['PWAT'], 'PRES': row_now['PRES'],
-        'WAVE_H': row_now['WAVE_H'], 'WAVE_DIR': row_now['WAVE_DIR'], 'WAVE_P': row_now['WAVE_P'],
+        'CAPE': row_now['CAPE'], 'PWAT': row_now['PWAT'], 'WAVE_H': row_now['WAVE_H'], 
+        'WAVE_DIR': row_now['WAVE_DIR'], 'WAVE_P': row_now['WAVE_P'],
         'CURRENT_VEL': row_now['CURRENT_VEL'], 'CURRENT_DIR': row_now['CURRENT_DIR'], 'SST': row_now['SST'],
         'storm_severity': int(storm_severity),
         'TMP_lag1': row_lag1['TMP'], 'TMP_lag2': row_lag2['TMP'],
@@ -305,7 +313,12 @@ def generate_prediction_input(station_name, coords, df_raw, simulated_storm_leve
         'WAVE_H_lag1': row_lag1['WAVE_H'], 'WAVE_H_lag2': row_lag2['WAVE_H'],
         'CURRENT_VEL_lag1': row_lag1['CURRENT_VEL'], 'CURRENT_VEL_lag2': row_lag2['CURRENT_VEL'],
         'SST_lag1': row_lag1['SST'], 'SST_lag2': row_lag2['SST'],
+        'PRES_lag1': row_lag1['PRES'], 'PRES_lag2': row_lag2['PRES'],
         'RH_rolling_mean_12h': rh_rolling, 'TMP_rolling_mean_12h': tmp_rolling,
+        'PRES_rolling_mean_12h': pres_rolling,
+        'WIND_SPEED_lag1': WS_lag1, 'WIND_SPEED_lag2': WS_lag2,
+        'WIND_rolling_mean_12h': wind_rolling_mean, 'WIND_rolling_max_12h': wind_rolling_max,
+        'PRES_change_6h': pres_change, 'WIND_change_6h': wind_change,
         'hour': row_now['time'].hour, 'month': current_month,
         'MPI': mpi,
         'wind_shear_mag_lag1': wind_shear_mag_lag1, 'wind_shear_mag_lag2': wind_shear_mag_lag2,
@@ -313,15 +326,17 @@ def generate_prediction_input(station_name, coords, df_raw, simulated_storm_leve
         'climatology_prior': climatology_prior
     }
     
-    FEATURE_COLS_45 = [
-        'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'PRES', 'WAVE_H', 'WAVE_DIR', 'WAVE_P',
+    FEATURE_COLS_54 = [
+        'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'WAVE_H', 'WAVE_DIR', 'WAVE_P',
         'CURRENT_VEL', 'CURRENT_DIR', 'SST', 'storm_severity',
         'TMP_lag1', 'TMP_lag2', 'RH_lag1', 'RH_lag2', 'UGRD_lag1', 'UGRD_lag2', 
         'VGRD_lag1', 'VGRD_lag2', 'CAPE_lag1', 'CAPE_lag2', 'PWAT_lag1', 'PWAT_lag2', 
         'APCP_lag1', 'APCP_lag2', 'WAVE_H_lag1', 'WAVE_H_lag2', 'CURRENT_VEL_lag1', 'CURRENT_VEL_lag2',
-        'SST_lag1', 'SST_lag2', 'RH_rolling_mean_12h', 'TMP_rolling_mean_12h', 'hour', 'month',
+        'SST_lag1', 'SST_lag2', 'PRES_lag1', 'PRES_lag2', 'RH_rolling_mean_12h', 'TMP_rolling_mean_12h',
+        'PRES_rolling_mean_12h', 'WIND_SPEED_lag1', 'WIND_SPEED_lag2', 'WIND_rolling_mean_12h', 'WIND_rolling_max_12h',
+        'PRES_change_6h', 'WIND_change_6h', 'hour', 'month',
         'MPI', 'wind_shear_mag_lag1', 'wind_shear_mag_lag2', 'wind_shear_vec_lag1', 'wind_shear_vec_lag2', 'climatology_prior'
     ]
     
-    df_input = pd.DataFrame([feat_dict])[FEATURE_COLS_45]
+    df_input = pd.DataFrame([feat_dict])[FEATURE_COLS_54]
     return df_input, row_now, storm_severity, climatology_prior

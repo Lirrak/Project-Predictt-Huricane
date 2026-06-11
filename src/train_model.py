@@ -70,8 +70,8 @@ def process_and_engineer_features(df):
     df['is_new_period'] = (df['time_diff'] > pd.Timedelta(hours=12)).fillna(False)
     df['period_id'] = df.groupby('station_name')['is_new_period'].cumsum()
     
-    # Mở rộng các biến tính trễ (Lag) bao gồm Chiều cao sóng, Tốc độ hải lưu và SST
-    features_to_lag = ['TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'APCP', 'WAVE_H', 'CURRENT_VEL', 'SST']
+    # Mở rộng các biến tính trễ (Lag) bao gồm Chiều cao sóng, Tốc độ hải lưu, SST và Khí áp
+    features_to_lag = ['TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'APCP', 'WAVE_H', 'CURRENT_VEL', 'SST', 'PRES']
     
     # Sử dụng groupby trực tiếp và vectorized shift/transform
     grouped = df.groupby(['station_name', 'period_id'])
@@ -81,6 +81,19 @@ def process_and_engineer_features(df):
         
     df['RH_rolling_mean_12h'] = grouped['RH'].transform(lambda x: x.rolling(window=4).mean())
     df['TMP_rolling_mean_12h'] = grouped['TMP'].transform(lambda x: x.rolling(window=4).mean())
+    df['PRES_rolling_mean_12h'] = grouped['PRES'].transform(lambda x: x.rolling(window=4).mean())
+    
+    # Tính toán biến Sức gió tức thời và trễ
+    df['WIND_SPEED_temp'] = np.sqrt(df['UGRD']**2 + df['VGRD']**2)
+    df['WIND_SPEED_lag1'] = np.sqrt(df['UGRD_lag1']**2 + df['VGRD_lag1']**2)
+    df['WIND_SPEED_lag2'] = np.sqrt(df['UGRD_lag2']**2 + df['VGRD_lag2']**2)
+    
+    df['WIND_rolling_mean_12h'] = df.groupby(['station_name', 'period_id'])['WIND_SPEED_temp'].transform(lambda x: x.rolling(window=4).mean())
+    df['WIND_rolling_max_12h'] = df.groupby(['station_name', 'period_id'])['WIND_SPEED_temp'].transform(lambda x: x.rolling(window=4).max())
+    
+    df['PRES_change_6h'] = df['PRES'] - df['PRES_lag2']
+    df['WIND_change_6h'] = df['WIND_SPEED_temp'] - df['WIND_SPEED_lag2']
+    df.drop(columns=['WIND_SPEED_temp'], inplace=True, errors='ignore')
     
     df['hour'] = df['timestamp'].dt.hour
     df['month'] = df['timestamp'].dt.month
@@ -174,18 +187,27 @@ def main():
     # Tính toán cột mục tiêu cho Gió (Wind Speed)
     df_features['WIND_SPEED'] = np.sqrt(df_features['UGRD']**2 + df_features['VGRD']**2)
     
-    # 4. Xác định Input (X) và Target (y)
-    target_cols = ['APCP', 'WIND_SPEED', 'PRES']
-    feature_cols = [col for col in df_features.columns if col not in target_cols + ['timestamp', 'station_name']]
+    # 4. Xác định Input (X) và Target (y) bằng danh sách 54 đặc trưng khí quyển - hải dương học tối ưu
+    FEATURE_COLS_54 = [
+        'latitude', 'longitude', 'TMP', 'RH', 'UGRD', 'VGRD', 'CAPE', 'PWAT', 'WAVE_H', 'WAVE_DIR', 'WAVE_P',
+        'CURRENT_VEL', 'CURRENT_DIR', 'SST', 'storm_severity',
+        'TMP_lag1', 'TMP_lag2', 'RH_lag1', 'RH_lag2', 'UGRD_lag1', 'UGRD_lag2', 
+        'VGRD_lag1', 'VGRD_lag2', 'CAPE_lag1', 'CAPE_lag2', 'PWAT_lag1', 'PWAT_lag2', 
+        'APCP_lag1', 'APCP_lag2', 'WAVE_H_lag1', 'WAVE_H_lag2', 'CURRENT_VEL_lag1', 'CURRENT_VEL_lag2',
+        'SST_lag1', 'SST_lag2', 'PRES_lag1', 'PRES_lag2', 'RH_rolling_mean_12h', 'TMP_rolling_mean_12h',
+        'PRES_rolling_mean_12h', 'WIND_SPEED_lag1', 'WIND_SPEED_lag2', 'WIND_rolling_mean_12h', 'WIND_rolling_max_12h',
+        'PRES_change_6h', 'WIND_change_6h', 'hour', 'month',
+        'MPI', 'wind_shear_mag_lag1', 'wind_shear_mag_lag2', 'wind_shear_vec_lag1', 'wind_shear_vec_lag2', 'climatology_prior'
+    ]
     
-    print(f"Số lượng đặc trưng đầu vào ({len(feature_cols)}): {feature_cols}")
+    print(f"Số lượng đặc trưng đầu vào ({len(FEATURE_COLS_54)}): {FEATURE_COLS_54}")
 
     # 5. Chia ngẫu nhiên tập dữ liệu (Random Shuffling Split: 80% Train, 20% Test) không theo thứ tự thời gian
     from sklearn.model_selection import train_test_split
     df_train, df_test = train_test_split(df_features, test_size=0.2, random_state=42, shuffle=True)
     
-    X_train = df_train[feature_cols]
-    X_test = df_test[feature_cols]
+    X_train = df_train[FEATURE_COLS_54]
+    X_test = df_test[FEATURE_COLS_54]
 
     print(f"Mẫu huấn luyện đa trạm (Ngẫu nhiên 80%): {len(df_train)} | Mẫu kiểm thử đa trạm (Ngẫu nhiên 20%): {len(df_test)}")
 
