@@ -17,6 +17,7 @@ from app.services.weather_service import (
     fetch_all_stations_raw_data,
     process_station_data,
     generate_prediction_input,
+    fetch_station_comparison_timeline,
 )
 from app.models.model_loader import models_loader
 from app.services.forecast_updater import update_forecasts_in_db
@@ -314,6 +315,29 @@ def get_stations(db: Session = Depends(get_db)):
         }
         for st in stations
     ]
+
+@app.get("/api/stations/{station_name}/comparison")
+def get_station_comparison(station_name: str, db: Session = Depends(get_db)):
+    """
+    On-demand multi-model comparison forecast timeline for the next 24 hours.
+    Compares: XGBoost vs GFS Raw vs ECMWF Raw
+    """
+    station_name_clean = station_name.strip()
+    coords = STATIONS.get(station_name_clean)
+    if not coords:
+        st = db.query(Station).filter(Station.name == station_name_clean).first()
+        if not st:
+            raise HTTPException(status_code=404, detail=f"Station '{station_name_clean}' not found.")
+        coords = {"lat": st.latitude, "lon": st.longitude}
+        
+    try:
+        timeline = fetch_station_comparison_timeline(station_name_clean, coords)
+        return timeline
+    except Exception as e:
+        import traceback
+        print(f"Error generating comparison for {station_name_clean}: {e}")
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Failed to generate comparison timeline: {str(e)}")
 
 @app.get("/api/stations/forecast")
 def get_stations_forecast(station_name: Optional[str] = None, db: Session = Depends(get_db)):
