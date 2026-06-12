@@ -168,7 +168,7 @@ export default function Home() {
     const fetchComparison = async () => {
       setLoadingComparison(true);
       try {
-        const res = await fetch(`${API_BASE}/api/stations/${encodeURIComponent(selectedStation.station_name)}/comparison`);
+        const res = await fetch(`${API_BASE}/api/stations/${encodeURIComponent(selectedStation.station_name)}/comparison?_t=${Date.now()}`, { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
           setComparisonData(data);
@@ -227,7 +227,7 @@ export default function Home() {
   useEffect(() => {
     const fetchAuditData = async () => {
       try {
-        const res = await fetch(`${API_BASE}/api/ml/audit`);
+        const res = await fetch(`${API_BASE}/api/ml/audit?_t=${Date.now()}`, { cache: 'no-store' });
         if (res.ok) {
           const data = await res.json();
           setAuditData(data);
@@ -256,13 +256,14 @@ export default function Home() {
     try {
       let res;
       if (stormLevel !== "auto") {
-        res = await fetch(`${API_BASE}/api/forecast/predict`, {
+        res = await fetch(`${API_BASE}/api/forecast/predict?_t=${Date.now()}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ station_name: "all", simulated_storm_level: stormLevel })
+          body: JSON.stringify({ station_name: "all", simulated_storm_level: stormLevel }),
+          cache: 'no-store'
         });
       } else {
-        res = await fetch(`${API_BASE}/api/stations/forecast`);
+        res = await fetch(`${API_BASE}/api/stations/forecast?_t=${Date.now()}`, { cache: 'no-store' });
       }
 
       if (res.ok) {
