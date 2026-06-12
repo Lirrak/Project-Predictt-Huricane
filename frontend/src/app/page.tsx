@@ -1055,7 +1055,7 @@ export default function Home() {
                           </div>
                           <div className="h-[95px]">
                             <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={comparisonData} margin={{ top: 2, right: 5, left: -25, bottom: 0 }}>
+                              <LineChart key={`rain-chart-${selectedStation?.station_name}`} data={comparisonData} margin={{ top: 2, right: 5, left: -25, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                                 <XAxis dataKey="time" stroke="#475569" fontSize={8} />
                                 <YAxis stroke="#475569" fontSize={8} />
@@ -1078,7 +1078,7 @@ export default function Home() {
                           </div>
                           <div className="h-[95px]">
                             <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={comparisonData} margin={{ top: 2, right: 5, left: -25, bottom: 0 }}>
+                              <LineChart key={`wind-chart-${selectedStation?.station_name}`} data={comparisonData} margin={{ top: 2, right: 5, left: -25, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                                 <XAxis dataKey="time" stroke="#475569" fontSize={8} />
                                 <YAxis stroke="#475569" fontSize={8} />
@@ -1101,7 +1101,7 @@ export default function Home() {
                           </div>
                           <div className="h-[95px]">
                             <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={comparisonData} margin={{ top: 2, right: 5, left: -25, bottom: 0 }}>
+                              <LineChart key={`pres-chart-${selectedStation?.station_name}`} data={comparisonData} margin={{ top: 2, right: 5, left: -25, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                                 <XAxis dataKey="time" stroke="#475569" fontSize={8} />
                                 <YAxis stroke="#475569" fontSize={8} domain={["auto", "auto"]} />
