@@ -16,7 +16,9 @@ import {
   Database,
   Star,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  Sun,
+  Moon
 } from "lucide-react";
 import {
   LineChart,
@@ -157,6 +159,48 @@ export default function Home() {
   const [comparisonData, setComparisonData] = useState<any[]>([]);
   const [loadingComparison, setLoadingComparison] = useState(false);
   const [activeGraphTab, setActiveGraphTab] = useState<"rain" | "wind" | "pres">("wind");
+  const [theme, setTheme] = useState<"light" | "dark">("dark");
+
+  // Load theme preference on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const savedTheme = localStorage.getItem("app_theme") as "light" | "dark" | null;
+      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      const initialTheme = savedTheme || systemTheme;
+      setTheme(initialTheme);
+      
+      if (initialTheme === "dark") {
+        document.documentElement.classList.add("dark");
+      } else {
+        document.documentElement.classList.remove("dark");
+      }
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+    localStorage.setItem("app_theme", newTheme);
+    
+    if (newTheme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+
+    // Dynamically change map tile layer on theme toggle!
+    const map = (window as any).leafletMap;
+    const L = (window as any).L;
+    const oldLayer = (window as any).leafletTileLayer;
+    if (map && L && oldLayer) {
+      map.removeLayer(oldLayer);
+      const newUrl = newTheme === "dark"
+        ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+      const newLayer = L.tileLayer(newUrl, { maxZoom: 18 }).addTo(map);
+      (window as any).leafletTileLayer = newLayer;
+    }
+  };
 
   // Local Storage Watchlist State (No Account needed)
   const [watchlist, setWatchlist] = useState<string[]>([]);
@@ -337,12 +381,18 @@ export default function Home() {
         attributionControl: false
       }).setView([15.0, 114.0], 5);
 
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      const isDark = document.documentElement.classList.contains("dark");
+      const tileUrl = isDark 
+        ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+        : "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png";
+
+      const tileLayerInstance = L.tileLayer(tileUrl, {
         maxZoom: 18,
       }).addTo(mapInstance);
 
       markersGroup = L.layerGroup().addTo(mapInstance);
       (window as any).leafletMap = mapInstance;
+      (window as any).leafletTileLayer = tileLayerInstance;
       (window as any).leafletMarkers = markersGroup;
       (window as any).L = L;
 
@@ -466,10 +516,10 @@ export default function Home() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-900 text-slate-100 font-sans">
+    <div className="flex flex-col min-h-screen bg-bg-primary text-text-primary font-sans transition-colors duration-200">
       
       {/* Header Bar */}
-      <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4">
+      <header className="border-b border-border-primary bg-bg-secondary/80 backdrop-blur sticky top-0 z-50 px-6 py-4 flex flex-col md:flex-row justify-between items-center gap-4 transition-colors duration-200">
         <div className="flex items-center gap-3">
           <div className="bg-blue-600 p-2 rounded-lg text-white">
             <Compass className="w-6 h-6" />
@@ -486,15 +536,28 @@ export default function Home() {
 
         {/* Database latency badge & Controls */}
         <div className="flex items-center gap-3 text-sm">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-slate-800 bg-slate-900/60 text-slate-300">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-border-primary bg-bg-primary/60 text-slate-300">
             <Database className="w-3.5 h-3.5 text-blue-400" />
             <span className="text-xs font-bold text-cyan-400">{apiLatency ? `${apiLatency}ms` : "---"}</span>
           </div>
 
+          {/* Theme Toggle Button Sáng / Tối */}
+          <button
+            onClick={toggleTheme}
+            className="p-1.5 rounded-lg border border-border-primary bg-bg-secondary text-slate-400 hover:text-slate-200 hover:bg-bg-primary transition-all active:scale-95 flex items-center justify-center"
+            title={theme === "dark" ? "Chuyển sang Chế độ Sáng" : "Chuyển sang Chế độ Tối"}
+          >
+            {theme === "dark" ? (
+              <Sun className="w-4 h-4 text-amber-400 animate-spin-slow" />
+            ) : (
+              <Moon className="w-4 h-4 text-indigo-400" />
+            )}
+          </button>
+
           <button 
             onClick={() => loadData(simulatedStorm)} 
             disabled={loading}
-            className="p-1.5 rounded-lg border border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200 hover:bg-slate-900 transition-all active:scale-95 disabled:opacity-50"
+            className="p-1.5 rounded-lg border border-border-primary bg-bg-secondary text-slate-400 hover:text-slate-200 hover:bg-bg-primary transition-all active:scale-95 disabled:opacity-50"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin text-blue-500" : ""}`} />
           </button>
@@ -510,7 +573,7 @@ export default function Home() {
       )}
 
       {/* Navigation Tab */}
-      <div className="flex border-b border-slate-800 bg-slate-950 px-6 py-2">
+      <div className="flex border-b border-border-primary bg-bg-secondary px-6 py-2 transition-colors duration-200">
         <button 
           onClick={() => setActiveTab("monitor")}
           className={`px-5 py-2.5 font-semibold text-sm transition-all border-b-2 -mb-2 flex items-center gap-2 ${
@@ -541,8 +604,8 @@ export default function Home() {
         <div className={activeTab === "monitor" ? "flex flex-col gap-6" : "hidden"}>
 
             {/* Quick Tracking Table for core stations */}
-            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800/60 flex flex-col gap-3">
-              <div className="flex justify-between items-center border-b border-slate-800/60 pb-2">
+            <div className="bg-bg-secondary p-4 rounded-xl border border-border-primary flex flex-col gap-3">
+              <div className="flex justify-between items-center border-b border-border-primary pb-2">
                 <div className="flex items-center gap-2">
                   <Database className="w-4 h-4 text-cyan-400" />
                   <h3 className="text-sm font-bold text-slate-200 tracking-wide">
@@ -557,7 +620,7 @@ export default function Home() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-800 text-slate-400 bg-slate-900/40">
+                    <tr className="border-b border-border-primary text-slate-400 bg-bg-primary/40">
                       <th className="p-2.5 font-bold">Tên Trạm</th>
                       <th className="p-2.5 font-bold">Vị trí GIS</th>
                       <th className="p-2.5 font-bold">Phân loại</th>
@@ -574,7 +637,7 @@ export default function Home() {
                     {(() => {
                       if (loading && stationsData.length === 0) {
                         return Array.from({ length: 5 }).map((_, idx) => (
-                          <tr key={`skeleton-row-${idx}`} className="border-b border-slate-800/40 animate-pulse">
+                          <tr key={`skeleton-row-${idx}`} className="border-b border-border-primary/40 animate-pulse">
                             <td className="p-2.5"><div className="h-4 bg-slate-800 rounded w-2/3"></div></td>
                             <td className="p-2.5"><div className="h-3 bg-slate-800 rounded w-1/2"></div></td>
                             <td className="p-2.5"><div className="h-4 bg-slate-800 rounded w-16"></div></td>
@@ -605,7 +668,7 @@ export default function Home() {
                           <tr 
                             key={`table-row-${st.station_name}`}
                             onClick={() => setSelectedStation(st)}
-                            className={`border-b border-slate-800/40 hover:bg-blue-500/5 cursor-pointer transition-colors ${
+                            className={`border-b border-border-primary/40 hover:bg-blue-500/5 cursor-pointer transition-colors ${
                               isSelected ? "bg-blue-600/10 text-blue-200 font-semibold" : "text-slate-300"
                             }`}
                           >
@@ -619,7 +682,7 @@ export default function Home() {
                             <td className="p-2.5 text-slate-400">
                               <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
                                 st.classification === "Land/Coastal" 
-                                  ? "bg-slate-900 border-slate-800 text-slate-400" 
+                                  ? "bg-bg-primary border-border-primary text-slate-400" 
                                   : "bg-cyan-500/5 border-cyan-500/20 text-cyan-400"
                               }`}>
                                 {st.classification === "Land/Coastal" ? "Đất liền/Đảo" : "Phao sâu"}
@@ -656,7 +719,7 @@ export default function Home() {
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
               
               {/* Sidebar Column (Controls & Lists) */}
-              <div className="xl:col-span-3 flex flex-col gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/60 max-h-[820px] overflow-hidden">
+              <div className="xl:col-span-3 flex flex-col gap-4 bg-bg-secondary p-4 rounded-xl border border-border-primary max-h-[820px] overflow-hidden">
                 <div className="flex flex-col gap-2">
                   <h3 className="text-sm font-bold text-slate-400 tracking-wider uppercase mb-1">🔍 Tìm kiếm & Sắp xếp</h3>
                   
@@ -668,7 +731,7 @@ export default function Home() {
                       placeholder="Tìm tên trạm..." 
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-9 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 text-slate-100 transition-colors"
+                      className="w-full pl-9 pr-4 py-2 bg-bg-primary border border-border-primary rounded-lg text-sm placeholder-slate-500 focus:outline-none focus:border-blue-500 text-slate-100 transition-colors"
                     />
                   </div>
 
@@ -676,7 +739,7 @@ export default function Home() {
                   <div className="grid grid-cols-1 gap-2 mt-1">
                     
                     {/* Category Filter */}
-                    <div className="flex items-center gap-2 bg-slate-900 px-3 py-2 border border-slate-800 rounded-lg">
+                    <div className="flex items-center gap-2 bg-bg-primary px-3 py-2 border border-border-primary rounded-lg">
                       <Filter className="w-4 h-4 text-slate-500" />
                       <select 
                         value={severityFilter} 
@@ -685,7 +748,7 @@ export default function Home() {
                       >
                         <option value="all">Tất cả cấp bão</option>
                         {Object.entries(SEVERITY_NAMES).map(([key, value]) => (
-                          <option key={key} value={key} className="bg-slate-900 text-slate-100">
+                          <option key={key} value={key} className="bg-bg-primary text-slate-100">
                             Cấp {key}: {value}
                           </option>
                         ))}
@@ -698,19 +761,19 @@ export default function Home() {
                       className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-xs font-semibold transition-all ${
                         watchlistOnlyFilter 
                           ? "bg-amber-500/10 border-amber-500/50 text-amber-400" 
-                          : "bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200"
+                          : "bg-bg-primary border-border-primary text-slate-400 hover:text-slate-200"
                       }`}
                     >
                       <Star className={`w-4 h-4 ${watchlistOnlyFilter ? "fill-amber-400" : ""}`} />
                       {watchlistOnlyFilter ? "Đang lọc: Trạm theo dõi" : "Chỉ xem trạm theo dõi"}
-                      <span className="ml-auto bg-slate-950 px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-300">
+                      <span className="ml-auto bg-bg-secondary px-1.5 py-0.5 rounded text-[10px] font-mono text-slate-300">
                         {watchlist.length}
                       </span>
                     </button>
                   </div>
 
                   {/* Simulated Storm level */}
-                  <div className="mt-2 p-3 bg-slate-900/80 border border-slate-800/80 rounded-lg">
+                  <div className="mt-2 p-3 bg-bg-primary/80 border border-border-primary rounded-lg">
                     <div className="flex justify-between items-center mb-2">
                       <span className="text-xs font-bold text-blue-400 flex items-center gap-1">
                         <TrendingUp className="w-3.5 h-3.5" /> Thử nghiệm & Giả lập bão
@@ -722,7 +785,7 @@ export default function Home() {
                         className={`flex-1 text-[9px] font-bold py-1 px-1 rounded border transition-colors ${
                           simulatedStorm === "auto" 
                             ? "bg-blue-600 text-white border-blue-500" 
-                            : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
+                            : "bg-bg-secondary text-slate-400 border-border-primary hover:text-slate-200"
                         }`}
                       >
                         TỰ ĐỘNG
@@ -734,7 +797,7 @@ export default function Home() {
                           className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded border transition-all ${
                             simulatedStorm === lvl 
                               ? "bg-red-600 border-red-500 text-white shadow-lg shadow-red-600/20" 
-                              : "bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200"
+                              : "bg-bg-secondary text-slate-400 border-border-primary hover:text-slate-200"
                           }`}
                         >
                           {lvl}
@@ -745,7 +808,7 @@ export default function Home() {
                 </div>
 
                 {/* Station List */}
-                <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 mt-2 pr-1 border-t border-slate-800/40 pt-3">
+                <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 mt-2 pr-1 border-t border-border-primary/40 pt-3">
                   <div className="flex justify-between items-center text-[10px] text-slate-500 font-bold tracking-wider mb-1 uppercase">
                     <span>Trạm ({filteredStations.length})</span>
                     <span>Cấp bão</span>
@@ -753,7 +816,7 @@ export default function Home() {
 
                   {loading && stationsData.length === 0 ? (
                     Array.from({ length: 6 }).map((_, idx) => (
-                      <div key={`sidebar-skeleton-${idx}`} className="w-full flex justify-between items-center px-3 py-3 rounded-lg border border-slate-800/40 bg-slate-900/20 animate-pulse">
+                      <div key={`sidebar-skeleton-${idx}`} className="w-full flex justify-between items-center px-3 py-3 rounded-lg border border-border-primary/40 bg-bg-primary/20 animate-pulse">
                         <div className="flex flex-col gap-1 w-2/3">
                           <div className="h-3.5 bg-slate-800 rounded w-1/2"></div>
                           <div className="h-2.5 bg-slate-800 rounded w-2/3"></div>
@@ -776,7 +839,7 @@ export default function Home() {
                           className={`w-full flex justify-between items-center px-3 py-2.5 rounded-lg border text-left transition-all text-xs ${
                             isSelected 
                               ? "bg-blue-600/10 border-blue-500/80 text-blue-200 shadow-md" 
-                              : "bg-slate-900/40 border-slate-800/60 hover:bg-slate-900/80 text-slate-300"
+                              : "bg-bg-primary/40 border-border-primary hover:bg-bg-primary/80 text-slate-300"
                           }`}
                         >
                           <div className="flex flex-col gap-0.5">
@@ -806,7 +869,7 @@ export default function Home() {
               </div>
 
               {/* Center Area: Map View */}
-              <div className="xl:col-span-5 flex flex-col gap-4 bg-slate-950/60 p-4 rounded-xl border border-slate-800/60 min-h-[500px] xl:h-[820px]">
+              <div className="xl:col-span-5 flex flex-col gap-4 bg-bg-secondary p-4 rounded-xl border border-border-primary min-h-[500px] xl:h-[820px]">
                 <div className="flex justify-between items-center">
                   <div>
                     <h3 className="text-sm font-bold text-slate-300 tracking-wide">📍 Bản đồ tương tác GIS Biển Đông</h3>
@@ -817,11 +880,11 @@ export default function Home() {
                 </div>
 
                 {/* Real GIS Leaflet Map Container */}
-                <div className="flex-1 relative bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-inner flex items-center justify-center p-2">
+                <div className="flex-1 relative bg-bg-primary border border-border-primary rounded-xl overflow-hidden shadow-inner flex items-center justify-center p-2">
                   <div id="map-container" className="w-full h-full rounded-xl z-10" style={{ minHeight: "400px" }}></div>
 
                   {/* Legend Card */}
-                  <div className="absolute bottom-3 left-3 bg-slate-950/90 px-3 py-2 border border-slate-800 rounded-lg text-[10px] text-slate-400 z-20 flex flex-col gap-1 backdrop-blur font-semibold">
+                  <div className="absolute bottom-3 left-3 bg-bg-secondary/90 px-3 py-2 border border-border-primary rounded-lg text-[10px] text-slate-400 z-20 flex flex-col gap-1 backdrop-blur font-semibold">
                     <div className="font-black text-slate-200">🔍 GHI CHÚ BẢN ĐỒ</div>
                     <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border border-amber-400 bg-amber-400/10"></span> Trạm có theo dõi (Watchlist)</div>
                     <div className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span> Trạm bình thường</div>
@@ -830,11 +893,11 @@ export default function Home() {
               </div>
 
               {/* Right Area: Station Information */}
-              <div className="xl:col-span-4 flex flex-col gap-4 bg-slate-950/60 p-5 rounded-xl border border-slate-800/60 xl:h-[820px] overflow-y-auto">
+              <div className="xl:col-span-4 flex flex-col gap-4 bg-bg-secondary p-5 rounded-xl border border-border-primary xl:h-[820px] overflow-y-auto">
                 {selectedStation ? (
                   <>
                     {/* Station Header & Watch Button */}
-                    <div className="border-b border-slate-800/60 pb-4">
+                    <div className="border-b border-border-primary pb-4">
                       <div className="flex justify-between items-start gap-2">
                         <div>
                           <span className="text-[10px] text-blue-400 font-bold tracking-wider uppercase bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
@@ -874,7 +937,7 @@ export default function Home() {
                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
                             watchlist.includes(selectedStation.station_name)
                               ? "bg-amber-500/10 border-amber-500/50 text-amber-400 hover:bg-amber-500/20"
-                              : "bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-slate-100"
+                              : "bg-bg-primary border-border-primary text-slate-300 hover:bg-slate-800 hover:text-slate-100"
                           }`}
                         >
                           <Star className={`w-4 h-4 ${watchlist.includes(selectedStation.station_name) ? "fill-amber-400 text-amber-400" : ""}`} />
@@ -884,46 +947,46 @@ export default function Home() {
                     </div>
 
                     {/* Meteorological and Oceanographic parameters */}
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1 mb-0.5 flex items-center gap-1.5 border-b border-slate-800/40 pb-1">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1 mb-0.5 flex items-center gap-1.5 border-b border-border-primary/40 pb-1">
                       <span>🌤️ THÔNG SỐ KHÍ TƯỢNG (METEOROLOGY)</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 mt-1">
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-orange-500/10 p-1.5 rounded text-orange-400"><Thermometer className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col">
                           <span className="text-[11px] text-slate-500">Nhiệt độ</span>
                           <span className="text-[18px] font-black text-slate-100">{(selectedStation.temp ?? 0)}°C</span>
                         </div>
                       </div>
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-blue-500/10 p-1.5 rounded text-blue-400"><Droplets className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col">
                           <span className="text-[11px] text-slate-500">Độ ẩm</span>
                           <span className="text-[18px] font-black text-slate-100">{(selectedStation.rh ?? 0)}%</span>
                         </div>
                       </div>
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-red-500/10 p-1.5 rounded text-red-400"><Wind className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col">
                           <span className="text-[11px] text-slate-500">Tốc độ Gió</span>
                           <span className="text-[18px] font-black text-slate-100">{(selectedStation.wind_speed ?? 0)} km/h</span>
                         </div>
                       </div>
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-teal-500/10 p-1.5 rounded text-teal-400"><Compass className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col">
                           <span className="text-[11px] text-slate-500">Hướng Gió</span>
                           <span className="text-[18px] font-black text-slate-100">{(selectedStation.wind_dir ?? 0)}°</span>
                         </div>
                       </div>
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-emerald-500/10 p-1.5 rounded text-emerald-400"><Activity className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col font-sans">
                           <span className="text-[11px] text-slate-500">Khí áp</span>
                           <span className="text-[18px] font-black text-slate-100">{(selectedStation.press ?? 0)} hPa</span>
                         </div>
                       </div>
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-amber-500/10 p-1.5 rounded text-amber-400"><AlertTriangle className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col font-sans">
                           <span className="text-[11px] text-slate-500">Xác suất Bão</span>
@@ -932,46 +995,46 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-2.5 mb-0.5 flex items-center gap-1.5 border-b border-slate-800/40 pb-1">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-2.5 mb-0.5 flex items-center gap-1.5 border-b border-border-primary/40 pb-1">
                       <span>🌊 THÔNG SỐ HẢI VĂN (OCEANOGRAPHY)</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 mt-1">
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-cyan-500/10 p-1.5 rounded text-cyan-400"><Waves className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col">
                           <span className="text-[11px] text-slate-500">Nhiệt biển SST</span>
                           <span className="text-[18px] font-black text-slate-100">{(selectedStation.sst ?? 0).toFixed(1)}°C</span>
                         </div>
                       </div>
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-indigo-500/10 p-1.5 rounded text-indigo-400"><Waves className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col font-sans">
                           <span className="text-[11px] text-slate-500">Chiều cao Sóng</span>
                           <span className="text-[18px] font-black text-slate-100">{(selectedStation.wave_h ?? 0).toFixed(1)} m</span>
                         </div>
                       </div>
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-violet-500/10 p-1.5 rounded text-violet-400"><Activity className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col font-sans">
                           <span className="text-[11px] text-slate-500">Chu kỳ Sóng</span>
                           <span className="text-[18px] font-black text-slate-100">{(selectedStation.wave_p ?? 0).toFixed(1)} s</span>
                         </div>
                       </div>
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-pink-500/10 p-1.5 rounded text-pink-400"><Compass className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col font-sans">
                           <span className="text-[11px] text-slate-500">Hướng Sóng</span>
                           <span className="text-[18px] font-black text-slate-100">{(selectedStation.wave_direction ?? 0)}°</span>
                         </div>
                       </div>
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-emerald-500/10 p-1.5 rounded text-emerald-400"><TrendingUp className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col">
                           <span className="text-[11px] text-slate-500">Dòng chảy</span>
                           <span className="text-[18px] font-black text-slate-100">{(selectedStation.current_vel ?? 0).toFixed(2)} m/s</span>
                         </div>
                       </div>
-                      <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800/60 flex items-center gap-2.5">
+                      <div className="bg-bg-primary/60 p-2.5 rounded-lg border border-border-primary flex items-center gap-2.5">
                         <div className="bg-blue-500/10 p-1.5 rounded text-blue-400"><Compass className="w-3.5 h-3.5" /></div>
                         <div className="flex flex-col">
                           <span className="text-[11px] text-slate-500">Hướng Dòng</span>
@@ -981,22 +1044,22 @@ export default function Home() {
                     </div>
 
                     {/* Predictions Output */}
-                    <div className="bg-slate-900/40 p-4 rounded-xl border border-blue-500/20 shadow-lg mt-1">
+                    <div className="bg-bg-primary/40 p-4 rounded-xl border border-blue-500/20 shadow-lg mt-1">
                       <h3 className="text-xs font-bold text-blue-400 tracking-wider uppercase mb-3 flex items-center gap-1.5">
                         <TrendingUp className="w-4 h-4 text-cyan-400" /> Kết quả dự báo đa nhiệm XGBoost (24h tới)
                       </h3>
                       <div className="grid grid-cols-3 gap-3 text-center">
-                        <div className="bg-slate-950/60 p-2.5 rounded border border-slate-800">
+                        <div className="bg-bg-secondary p-2.5 rounded border border-border-primary">
                           <span className="text-[9px] text-slate-500 block uppercase font-bold mb-1">Lượng mưa</span>
                           <span className="text-sm font-black text-blue-400 font-mono">{selectedStation.pred_rain.toFixed(1)}</span>
                           <span className="text-[9px] text-slate-400 block mt-0.5">mm</span>
                         </div>
-                        <div className="bg-slate-950/60 p-2.5 rounded border border-slate-800">
+                        <div className="bg-bg-secondary p-2.5 rounded border border-border-primary">
                           <span className="text-[9px] text-slate-500 block uppercase font-bold mb-1">Tốc độ Gió</span>
                           <span className="text-sm font-black text-red-400 font-mono">{Math.max(0, selectedStation.pred_wind).toFixed(1)}</span>
                           <span className="text-[9px] text-slate-400 block mt-0.5">km/h</span>
                         </div>
-                        <div className="bg-slate-950/60 p-2.5 rounded border border-slate-800">
+                        <div className="bg-bg-secondary p-2.5 rounded border border-border-primary">
                           <span className="text-[9px] text-slate-500 block uppercase font-bold mb-1">Khí áp</span>
                           <span className="text-sm font-black text-emerald-400 font-mono">{selectedStation.pred_pres.toFixed(0)}</span>
                           <span className="text-[9px] text-slate-400 block mt-0.5">hPa</span>
@@ -1006,14 +1069,14 @@ export default function Home() {
 
                     {/* 3 separate trend graphs with Tab Selector for clean compact layout */}
                     <div className="flex flex-col gap-3 mt-1">
-                      <div className="flex justify-between items-center border-b border-slate-800/40 pb-1.5">
+                      <div className="flex justify-between items-center border-b border-border-primary/40 pb-1.5">
                         <h4 className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
                           <TrendingUp className="w-4 h-4 text-blue-400" /> SO SÁNH DỰ BÁO XU HƯỚNG 24H TỚI
                         </h4>
                       </div>
 
                       {/* Tab Switcher */}
-                      <div className="flex bg-slate-900/80 p-1 rounded-lg border border-slate-800 gap-1">
+                      <div className="flex bg-bg-primary/80 p-1 rounded-lg border border-border-primary gap-1">
                         <button
                           onClick={() => setActiveGraphTab("wind")}
                           className={`flex-1 text-[10px] font-bold py-1.5 rounded transition-all ${
@@ -1048,7 +1111,7 @@ export default function Home() {
                       
                       {/* Graph 1: Rain */}
                       {activeGraphTab === "rain" && (
-                        <div className="bg-slate-900/30 border border-slate-800/60 p-2.5 rounded-lg flex flex-col font-sans">
+                        <div className="bg-bg-primary/30 border border-border-primary p-2.5 rounded-lg flex flex-col font-sans">
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">🟦 Lượng mưa dự báo (mm)</span>
                             <span className="text-[8px] text-slate-500 font-semibold">XGBoost (Đậm) | GFS (Gạch) | ECMWF (Chấm)</span>
@@ -1071,7 +1134,7 @@ export default function Home() {
 
                       {/* Graph 2: Wind */}
                       {activeGraphTab === "wind" && (
-                        <div className="bg-slate-900/30 border border-slate-800/60 p-2.5 rounded-lg flex flex-col font-sans">
+                        <div className="bg-bg-primary/30 border border-border-primary p-2.5 rounded-lg flex flex-col font-sans">
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">🟥 Tốc độ Gió dự báo (km/h)</span>
                             <span className="text-[8px] text-slate-500 font-semibold">XGBoost (Đậm) | GFS (Gạch) | ECMWF (Chấm)</span>
@@ -1094,7 +1157,7 @@ export default function Home() {
 
                       {/* Graph 3: Pressure */}
                       {activeGraphTab === "pres" && (
-                        <div className="bg-slate-900/30 border border-slate-800/60 p-2.5 rounded-lg flex flex-col font-sans">
+                        <div className="bg-bg-primary/30 border border-border-primary p-2.5 rounded-lg flex flex-col font-sans">
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">🟩 Khí áp dự báo (hPa)</span>
                             <span className="text-[8px] text-slate-500 font-semibold">XGBoost (Đậm) | GFS (Gạch) | ECMWF (Chấm)</span>
@@ -1130,7 +1193,7 @@ export default function Home() {
         <div className={activeTab === "audit" ? "max-w-5xl mx-auto flex flex-col gap-6" : "hidden"}>
             
             {/* Core Audit Intro */}
-            <div className="bg-slate-950/60 p-6 rounded-xl border border-slate-800/80">
+            <div className="bg-bg-secondary p-6 rounded-xl border border-border-primary">
               <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
                 <Database className="w-5 h-5 text-blue-500" /> Hệ thống kiểm định Benchmark khí hậu (Meteorological ML Audit)
               </h2>
@@ -1140,7 +1203,7 @@ export default function Home() {
             </div>
 
             {/* Performance metrics table */}
-            <div className="bg-slate-950/60 p-5 rounded-xl border border-slate-800/80 overflow-hidden">
+            <div className="bg-bg-secondary p-5 rounded-xl border border-border-primary overflow-hidden">
               <h3 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-1.5">
                 <CheckCircle className="w-4 h-4 text-emerald-400" /> Bảng so sánh đa chỉ số (Multi-metric Comparison)
               </h3>
@@ -1148,7 +1211,7 @@ export default function Home() {
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="border-b border-slate-800 text-slate-400 bg-slate-900/60">
+                    <tr className="border-b border-border-primary text-slate-400 bg-bg-primary/60">
                       <th className="p-3 font-semibold">Chỉ số kiểm định</th>
                       <th className="p-3 text-center font-semibold">Mô hình Vật lý Đơn giản (Persistence)</th>
                       <th className="p-3 text-center font-semibold text-blue-400 bg-blue-500/5">Mô hình XGBoost Đa nhiệm mới</th>
@@ -1156,19 +1219,19 @@ export default function Home() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
+                    <tr className="border-b border-border-primary/40 hover:bg-bg-primary/10">
                       <td className="p-3 font-semibold">Recall (POD) Cấp bão &ge; 2</td>
                       <td className="p-3 text-center font-mono">{auditData?.RECALL_PERS ? `${auditData.RECALL_PERS.toFixed(2)}%` : "6.44%"}</td>
                       <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">{auditData?.RECALL_XGB ? `${auditData.RECALL_XGB.toFixed(2)}%` : "100.00%"}</td>
                       <td className="p-3 text-emerald-400 font-bold">XUẤT SẮC (Đạt mục tiêu &ge; 97%)</td>
                     </tr>
-                    <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
+                    <tr className="border-b border-border-primary/40 hover:bg-bg-primary/10">
                       <td className="p-3 font-semibold">CSI (Threat Score) lớp bão</td>
                       <td className="p-3 text-center font-mono">{auditData?.CSI_PERS ? `${auditData.CSI_PERS.toFixed(2)}%` : "3.33%"}</td>
                       <td className="p-3 text-center font-mono font-bold text-slate-200 bg-blue-500/5">{auditData?.CSI_XGB ? `${auditData.CSI_XGB.toFixed(2)}%` : "2.73%"}</td>
                       <td className="p-3 text-slate-400">Đạt tiêu chuẩn thực chiến xuất sắc</td>
                     </tr>
-                    <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
+                    <tr className="border-b border-border-primary/40 hover:bg-bg-primary/10">
                       <td className="p-3 font-semibold">MAE Lượng mưa (APCP - mm)</td>
                       <td className="p-3 text-center font-mono text-slate-400">{auditData?.MAE_R_PERS ? auditData.MAE_R_PERS.toFixed(4) : "0.5133"}</td>
                       <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">{auditData?.MAE_R_XGB ? auditData.MAE_R_XGB.toFixed(4) : "0.2920"}</td>
@@ -1176,13 +1239,13 @@ export default function Home() {
                         {auditData ? `Vượt trội hoàn toàn (Cải thiện ${Math.round((1 - auditData.MAE_R_XGB / auditData.MAE_R_PERS) * 100)}%)` : "Vượt trội hoàn toàn (Cải thiện 43%)"}
                       </td>
                     </tr>
-                    <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
+                    <tr className="border-b border-border-primary/40 hover:bg-bg-primary/10">
                       <td className="p-3 font-semibold">RMSE Lượng mưa (APCP - mm)</td>
                       <td className="p-3 text-center font-mono text-slate-400">{auditData?.RMSE_R_PERS ? auditData.RMSE_R_PERS.toFixed(4) : "1.2805"}</td>
                       <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">{auditData?.RMSE_R_XGB ? auditData.RMSE_R_XGB.toFixed(4) : "0.6757"}</td>
                       <td className="p-3 text-emerald-400 font-bold">Chính xác gấp đôi mô hình nền</td>
                     </tr>
-                    <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
+                    <tr className="border-b border-border-primary/40 hover:bg-bg-primary/10">
                       <td className="p-3 font-semibold">MAE Tốc độ gió (km/h)</td>
                       <td className="p-3 text-center font-mono text-slate-400">{auditData?.MAE_W_PERS ? auditData.MAE_W_PERS.toFixed(4) : "12.9307"}</td>
                       <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">{auditData?.MAE_W_XGB ? auditData.MAE_W_XGB.toFixed(4) : "0.9123"}</td>
@@ -1190,13 +1253,13 @@ export default function Home() {
                         {auditData ? `Cực kỳ vượt trội (Cải thiện ${Math.round((1 - auditData.MAE_W_XGB / auditData.MAE_W_PERS) * 100)}%)` : "Cực kỳ vượt trội (Cải thiện 93%)"}
                       </td>
                     </tr>
-                    <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
+                    <tr className="border-b border-border-primary/40 hover:bg-bg-primary/10">
                       <td className="p-3 font-semibold">RMSE Tốc độ gió (km/h)</td>
                       <td className="p-3 text-center font-mono text-slate-400">{auditData?.RMSE_W_PERS ? auditData.RMSE_W_PERS.toFixed(4) : "16.2202"}</td>
                       <td className="p-3 text-center font-mono font-bold text-emerald-400 bg-blue-500/5">{auditData?.RMSE_W_XGB ? auditData.RMSE_W_XGB.toFixed(4) : "1.3060"}</td>
                       <td className="p-3 text-emerald-400 font-bold">Khớp trường gió khí quyển đồng bộ</td>
                     </tr>
-                    <tr className="border-b border-slate-800/40 hover:bg-slate-900/10">
+                    <tr className="border-b border-border-primary/40 hover:bg-bg-primary/10">
                       <td className="p-3 font-semibold">MAE Khí áp (PRES - hPa)</td>
                       <td className="p-3 text-center font-mono text-slate-400">{auditData?.MAE_P_PERS ? auditData.MAE_P_PERS.toFixed(4) : "3.9701"}</td>
                       <td className="p-3 text-center font-mono font-bold text-amber-400 bg-blue-500/5">{auditData?.MAE_P_XGB ? auditData.MAE_P_XGB.toFixed(4) : "10.4577"}</td>
@@ -1209,7 +1272,7 @@ export default function Home() {
 
             {/* Physical consistency cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-slate-950/60 p-5 rounded-xl border border-slate-800/80">
+              <div className="bg-bg-secondary p-5 rounded-xl border border-border-primary">
                 <div className="bg-blue-500/10 w-10 h-10 rounded-lg flex items-center justify-center text-blue-400 font-bold mb-3">
                   {auditData?.CORR_WIND_WAVE ? auditData.CORR_WIND_WAVE.toFixed(2) : "0.90"}
                 </div>
@@ -1218,7 +1281,7 @@ export default function Home() {
                   Hệ số tương quan đạt <strong>{auditData?.CORR_WIND_WAVE ? auditData.CORR_WIND_WAVE.toFixed(4) : "0.9009"}</strong>. Khi tốc độ gió tăng, độ cao sóng tăng phi tuyến hoàn toàn chính xác theo cơ chế truyền năng lượng lý thuyết Pierson-Moskowitz.
                 </p>
               </div>
-              <div className="bg-slate-950/60 p-5 rounded-xl border border-slate-800/80">
+              <div className="bg-bg-secondary p-5 rounded-xl border border-border-primary">
                 <div className="bg-cyan-500/10 w-10 h-10 rounded-lg flex items-center justify-center text-cyan-400 font-bold mb-3">
                   {auditData?.CORR_WIND_CURRENT ? auditData.CORR_WIND_CURRENT.toFixed(2) : "0.23"}
                 </div>
@@ -1227,7 +1290,7 @@ export default function Home() {
                   Hệ số tương quan đạt <strong>{auditData?.CORR_WIND_CURRENT ? auditData.CORR_WIND_CURRENT.toFixed(4) : "0.2292"}</strong>, phù hợp một cách hoàn hảo với lý thuyết Ekman về truyền động lực của gió lên các dòng chảy tầng mặt đại dương sâu.
                 </p>
               </div>
-              <div className="bg-slate-950/60 p-5 rounded-xl border border-slate-800/80">
+              <div className="bg-bg-secondary p-5 rounded-xl border border-border-primary">
                 <div className="bg-red-500/10 w-10 h-10 rounded-lg flex items-center justify-center text-red-400 font-bold mb-3">
                   {auditData?.SST_STRONG ? auditData.SST_STRONG.toFixed(1) : "27.9"}
                 </div>
@@ -1243,7 +1306,7 @@ export default function Home() {
       </main>
 
       {/* FOOTER */}
-      <footer className="border-t border-slate-800 bg-slate-950 py-6 text-center text-xs text-slate-500 flex flex-col gap-2">
+      <footer className="border-t border-border-primary bg-bg-secondary py-6 text-center text-xs text-slate-500 flex flex-col gap-2">
         <div>Hệ thống giám sát và dự báo cấp cao Biển Đông Advanced • Dự án Dự báo Khí tượng Thủy văn Quốc gia MLOps</div>
         <div className="text-[10px] text-slate-600">Phát triển bằng Next.js (TypeScript) + Tailwind CSS + FastAPI + XGBoost Regressor</div>
       </footer>
