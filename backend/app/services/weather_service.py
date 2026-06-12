@@ -1,5 +1,7 @@
 import os
+import time
 import datetime
+import concurrent.futures
 import numpy as np
 import pandas as pd
 import requests
@@ -489,7 +491,27 @@ def generate_prediction_input_at_idx(station_name, coords, df_raw, target_idx, s
     df_input = pd.DataFrame([feat_dict])[FEATURE_COLS_54]
     return df_input, row_now
 
+# Thread-safe RAM Cache for station comparison timeline (15 minutes expiration)
+COMPARISON_CACHE = {}
+CACHE_EXPIRATION_SECONDS = 900
+
+def fetch_url_sync(url):
+    try:
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return None
+
 def fetch_station_comparison_timeline(station_name: str, coords: dict):
+    # 1. Check RAM Cache
+    now_ts = time.time()
+    if station_name in COMPARISON_CACHE:
+        cache_entry = COMPARISON_CACHE[station_name]
+        if now_ts - cache_entry['timestamp'] < CACHE_EXPIRATION_SECONDS:
+            return cache_entry['data']
+
     # Fetch GFS Raw
     url_gfs = f"https://api.open-meteo.com/v1/forecast?latitude={coords['lat']}&longitude={coords['lon']}&hourly=temperature_2m,relative_humidity_2m,surface_pressure,precipitation,wind_speed_10m,wind_direction_10m&past_hours=12&forecast_days=1&timezone=GMT"
     # Fetch ECMWF Raw
@@ -497,21 +519,12 @@ def fetch_station_comparison_timeline(station_name: str, coords: dict):
     # Fetch Marine Raw
     url_marine = f"https://marine-api.open-meteo.com/v1/marine?latitude={coords['lat']}&longitude={coords['lon']}&hourly=wave_height,wave_direction,wave_period,ocean_current_velocity,ocean_current_direction,sea_surface_temperature&past_hours=12&forecast_days=1&timezone=GMT"
     
+    # 2. Parallel Fetching (using concurrent.futures ThreadPoolExecutor)
     data_gfs, data_ecmwf, data_marine = None, None, None
-    try:
-        r = requests.get(url_gfs, timeout=10)
-        if r.status_code == 200: data_gfs = r.json()
-    except Exception: pass
-    
-    try:
-        r = requests.get(url_ecmwf, timeout=10)
-        if r.status_code == 200: data_ecmwf = r.json()
-    except Exception: pass
-        
-    try:
-        r = requests.get(url_marine, timeout=10)
-        if r.status_code == 200: data_marine = r.json()
-    except Exception: pass
+    urls = [url_gfs, url_ecmwf, url_marine]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        results = list(executor.map(fetch_url_sync, urls))
+    data_gfs, data_ecmwf, data_marine = results[0], results[1], results[2]
 
     # If any is None, return empty list (or fallbacks)
     if not data_gfs or not data_marine:
@@ -545,15 +558,40 @@ def fetch_station_comparison_timeline(station_name: str, coords: dict):
     hourly_ecmwf = data_ecmwf.get('hourly', {}) if data_ecmwf else {}
     ecmwf_times = [datetime.datetime.strptime(t, "%Y-%m-%dT%H:00") for t in hourly_ecmwf.get('time', [])]
     
-    for i in range(0, 25, 3):
-        target_idx = current_idx + i
-        if target_idx >= len(df_raw):
-            break
-            
-        df_input, row_now = generate_prediction_input_at_idx(station_name, coords, df_raw, target_idx)
+    # 3. Batch Predictions Preparation
+    target_indices = [current_idx + i for i in range(0, 25, 3) if current_idx + i < len(df_raw)]
+    inputs = []
+    rows_now = []
+    for idx in target_indices:
+        df_input, row_now = generate_prediction_input_at_idx(station_name, coords, df_raw, idx)
+        inputs.append(df_input)
+        rows_now.append(row_now)
         
-        from app.models.model_loader import models_loader
-        pred_rain, pred_wind, pred_pres = models_loader.predict(df_input, row_now)
+    df_batch = pd.concat(inputs, ignore_index=True)
+    
+    # Run XGBoost Batch Predictions ONCE for all 9 rows!
+    from app.models.model_loader import models_loader
+    if not models_loader.is_loaded:
+        models_loader.load_models()
+        
+    if models_loader.is_loaded:
+        preds_rain = np.maximum(0.0, models_loader.model_rain.predict(df_batch))
+        preds_wind_ms = np.maximum(0.0, models_loader.model_wind.predict(df_batch))
+        preds_pres_pa = models_loader.model_pres.predict(df_batch)
+        
+        preds_wind = preds_wind_ms * 3.6
+        preds_pres = preds_pres_pa / 100.0
+    else:
+        # Fallback to GFS
+        preds_rain = [max(0.0, float(r['precipitation'])) for r in rows_now]
+        preds_wind = [float(r['wind_speed']) for r in rows_now]
+        preds_pres = [float(r['press_hpa']) for r in rows_now]
+        
+    # Process results into timeline
+    for idx_in_list, row_now in enumerate(rows_now):
+        pred_rain = float(preds_rain[idx_in_list])
+        pred_wind = float(preds_wind[idx_in_list])
+        pred_pres = float(preds_pres[idx_in_list])
         
         target_time = row_now['time']
         
@@ -596,4 +634,9 @@ def fetch_station_comparison_timeline(station_name: str, coords: dict):
             "ecmwf_rain": float(round(ecmwf_rain, 1))
         })
         
+    # Store to RAM Cache
+    COMPARISON_CACHE[station_name] = {
+        'timestamp': now_ts,
+        'data': timeline
+    }
     return timeline
